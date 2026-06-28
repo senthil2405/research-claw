@@ -1,0 +1,153 @@
+// Research Claw — Part A schema
+// Auth.js (NextAuth v5) adapter models + domain models.
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---- Auth.js adapter models ----
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+
+  // BYOK: the user's own Anthropic API key, encrypted at rest (AES-256-GCM).
+  // Only `anthropicKeyLast4` is ever exposed to the client.
+  anthropicKeyEnc       String?
+  anthropicKeyLast4     String?
+  anthropicKeyUpdatedAt DateTime?
+
+  // Account login: true once the user completes `claude auth login` (their
+  // session lives in a per-user CLAUDE_CONFIG_DIR). Set by the auth routes.
+  claudeAuthorized   Boolean   @default(false)
+  claudeAuthorizedAt DateTime?
+
+  accounts  Account[]
+  sessions  Session[]
+  documents Document[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+// Present for adapter completeness. We use the JWT session strategy
+// (required so the dev Credentials mock-login works), so these rows are
+// generally unused, but the table is kept for schema compatibility.
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ---- Domain models ----
+// A Document is owned by EITHER a logged-in user (userId) OR an anonymous
+// browser session (anonId). Exactly one is set; enforced in the service layer.
+model Document {
+  id         String   @id @default(cuid())
+  userId     String?
+  anonId     String?
+  filename   String
+  storedName String   @unique
+  mimeType   String   @default("application/pdf")
+  sizeBytes  Int
+  pageCount  Int?
+  createdAt  DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  chatSession ChatSession?
+  highlights  Highlight[]
+
+  @@index([userId, createdAt])
+  @@index([anonId, createdAt])
+}
+
+// One persistent Claude session per PDF (created on first chat). All windows
+// for a document share this single session; ownership is inherited from the
+// Document. `claudeSessionId` is the Claude Agent SDK resume id (null until the
+// first turn completes). `seqCounter` gives a monotonic global order across the
+// whole session; `cwd` is the stable working dir the SDK resumes against.
+model ChatSession {
+  id             String   @id @default(cuid())
+  documentId     String   @unique
+  claudeSessionId String?
+  cwd            String?
+  seqCounter     Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  document Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+}
+
+// A "window" = a highlighted region of the PDF that anchors a chat thread.
+// `rects` is JSON: an array of {x,y,w,h} normalized to page size (0..1) so the
+// highlight survives zoom/rotation and can be re-rendered on reload.
+model Highlight {
+  id           String   @id @default(cuid())
+  documentId   String
+  pageNumber   Int
+  rects        String
+  selectedText String
+  createdAt    DateTime @default(now())
+
+  document Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  messages ChatMessage[]
+
+  @@index([documentId, createdAt])
+}
+
+// A single chat message in the document's session. `highlightId` is the window
+// it belongs to; `turnIndex` orders messages within that window; `seq` is the
+// global order within the whole Claude session.
+model ChatMessage {
+  id            String   @id @default(cuid())
+  sessionId     String
+  highlightId   String
+  role          String
+  content       String
+  highlightText String?
+  turnIndex     Int
+  seq           Int
+  createdAt     DateTime @default(now())
+
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  highlight Highlight   @relation(fields: [highlightId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, seq])
+  @@index([highlightId, turnIndex])
+}

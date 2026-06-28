@@ -1,0 +1,3 @@
+Improvements (Mainting Claude auths for a single user session)
+
+every time the server stops and starts its asking me to reauth Claude, this is dangerous since multiple repeated claude auths can cause claude to potentially ban our ip, so a potential way to fix this is atleast for local purposes for now lets try to store the auth results and use it to prevent reauth everytime atleast while local developement

@@ -1,0 +1,28 @@
+.overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.chip {
+  position: absolute;
+  transform: translate(-40%, -45%);
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border: 2px solid var(--bg-surface);
+  box-shadow: 0 1px 4px var(--pdf-page-shadow);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.chip:hover {
+  background: var(--accent-hover);
+}

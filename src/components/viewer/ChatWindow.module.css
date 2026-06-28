@@ -1,0 +1,353 @@
+.window {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  /* width + height come from inline style (resizable). */
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 12px 32px rgba(60, 55, 45, 0.22);
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+/* Resize mode: highlighted border around the window + visible grab handles. */
+.windowResizing {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  box-shadow:
+    0 0 0 4px var(--accent-soft),
+    0 12px 32px rgba(60, 55, 45, 0.28);
+}
+
+.resizeHandle {
+  position: absolute;
+  z-index: 5;
+  touch-action: none;
+}
+.handle_n {
+  top: 0;
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.handle_s {
+  bottom: 0;
+  left: 10px;
+  right: 10px;
+  height: 8px;
+  cursor: ns-resize;
+}
+.handle_e {
+  right: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.handle_w {
+  left: 0;
+  top: 10px;
+  bottom: 10px;
+  width: 8px;
+  cursor: ew-resize;
+}
+.handle_ne,
+.handle_nw,
+.handle_se,
+.handle_sw {
+  width: 16px;
+  height: 16px;
+}
+/* Visible corner grab dots. */
+.handle_ne::after,
+.handle_nw::after,
+.handle_se::after,
+.handle_sw::after {
+  content: "";
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  background: var(--accent);
+  border: 1.5px solid var(--bg-surface);
+  border-radius: 2px;
+}
+.handle_ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.handle_ne::after {
+  top: 2px;
+  right: 2px;
+}
+.handle_nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+.handle_nw::after {
+  top: 2px;
+  left: 2px;
+}
+.handle_se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+.handle_se::after {
+  bottom: 2px;
+  right: 2px;
+}
+.handle_sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+.handle_sw::after {
+  bottom: 2px;
+  left: 2px;
+}
+
+/* ---- Header (drag handle) ---- */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-sidebar);
+  border-bottom: 1px solid var(--border);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.header:active {
+  cursor: grabbing;
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.headerButtons {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Resize toggle while active. */
+.iconButtonActive,
+.iconButtonActive:hover {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* ---- Context chip ---- */
+.context {
+  margin: 8px 10px 0;
+  padding: 6px 10px;
+  background: var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+  font-family: var(--font-serif);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* ---- Message list ---- */
+.messages {
+  flex: 1;
+  min-height: 80px;
+  overflow-y: auto;
+  padding: 12px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty {
+  margin: auto;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+}
+
+.rowUser {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+
+.rowAssistant {
+  align-self: flex-start;
+  align-items: flex-start;
+}
+
+.quoteAbove {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-serif);
+  font-style: italic;
+  margin-bottom: 3px;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bubble {
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.bubbleUser {
+  background: var(--accent);
+  color: var(--text-on-accent);
+  border-bottom-right-radius: 4px;
+}
+
+.bubbleAssistant {
+  background: var(--bg-app);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+
+/* ---- Typing indicator ---- */
+.typing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 14px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: bounce 1.2s infinite ease-in-out;
+}
+
+.dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* ---- Composer ---- */
+.composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.textarea {
+  flex: 1;
+  resize: none;
+  max-height: 120px;
+  min-height: 38px;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.4;
+  outline: none;
+}
+
+.textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.sendButton {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sendButton:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.sendButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

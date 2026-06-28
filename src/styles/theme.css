@@ -1,0 +1,43 @@
+/* Research Claw — Claude-inspired palette and shared design tokens. */
+:root {
+  /* Surfaces */
+  --bg-app: #f5f4ee; /* main canvas (warm cream) */
+  --bg-surface: #faf9f5; /* cards, toolbar */
+  --bg-sidebar: #f0eee6; /* sidebar */
+  --bg-hover: #ebe9e0; /* hover on cream surfaces */
+
+  /* Accent (Claude terracotta / clay) */
+  --accent: #d97757;
+  --accent-hover: #c25e3f;
+  --accent-soft: rgba(217, 119, 87, 0.12);
+
+  /* Text */
+  --text-primary: #141413;
+  --text-secondary: #44423d;
+  --text-muted: #6e6e68;
+  --text-on-accent: #ffffff;
+
+  /* Lines */
+  --border: #e8e6dc;
+  --border-strong: #d9d6ca;
+
+  /* PDF stage (replaces Chrome's #525659 dark gray with a warm gray) */
+  --pdf-stage-bg: #e8e6de;
+  --pdf-page-bg: #ffffff;
+  --pdf-page-shadow: rgba(60, 55, 45, 0.18);
+
+  /* Feedback */
+  --danger: #b3422f;
+  --danger-soft: rgba(179, 66, 47, 0.1);
+
+  /* Layout */
+  --sidebar-width: 272px;
+  --toolbar-height: 48px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* Typography */
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: var(--font-lora), Georgia, "Times New Roman", serif;
+}

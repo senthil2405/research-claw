@@ -1,0 +1,103 @@
+import { randomUUID } from "node:crypto";
+
+import type { Document } from "@prisma/client";
+
+import { prisma } from "@/server/db";
+import { localFileStore } from "@/server/files/localStore";
+import { getPageCount } from "@/server/pdf";
+import { ownerWhere, type OwnerRef } from "@/server/owner";
+import type { DocumentMeta } from "@/lib/types";
+
+/**
+ * Map a Prisma Document row to the public API shape. Never exposes the
+ * storedName, owner ids, or any filesystem detail.
+ */
+export function toDocumentMeta(doc: Document): DocumentMeta {
+  return {
+    id: doc.id,
+    filename: doc.filename,
+    sizeBytes: doc.sizeBytes,
+    pageCount: doc.pageCount ?? null,
+    createdAt: doc.createdAt.toISOString(),
+  };
+}
+
+export interface CreateDocumentInput {
+  buffer: Buffer;
+  filename: string;
+  sizeBytes: number;
+}
+
+/**
+ * Persist a validated PDF upload: parse its page count, write the bytes to the
+ * file store, then create the DB row. Guarantees no orphan files — if the DB
+ * write fails the stored file is removed (best-effort) before rethrowing.
+ *
+ * Rethrows if `getPageCount` fails so the route can map it to a 415.
+ */
+export async function createDocument(
+  owner: OwnerRef,
+  input: CreateDocumentInput,
+): Promise<DocumentMeta> {
+  // Throws on invalid PDF — let the caller map to 415.
+  const pageCount = await getPageCount(input.buffer);
+
+  const storedName = `${randomUUID()}.pdf`;
+  await localFileStore.save(storedName, input.buffer);
+
+  try {
+    const doc = await prisma.document.create({
+      data: {
+        ...ownerWhere(owner),
+        filename: input.filename,
+        storedName,
+        sizeBytes: input.sizeBytes,
+        pageCount,
+      },
+    });
+    return toDocumentMeta(doc);
+  } catch (err) {
+    // Avoid leaving an orphan file when the DB write fails.
+    await localFileStore.delete(storedName).catch(() => {});
+    throw err;
+  }
+}
+
+/** List an owner's documents, newest first. */
+export async function listDocuments(owner: OwnerRef): Promise<DocumentMeta[]> {
+  const docs = await prisma.document.findMany({
+    where: ownerWhere(owner),
+    orderBy: { createdAt: "desc" },
+  });
+  return docs.map(toDocumentMeta);
+}
+
+/**
+ * Fetch a single document scoped to the owner. Returns the FULL Prisma row
+ * (callers need storedName for streaming/deletion) or null if not owned.
+ */
+export async function getOwnedDocument(
+  owner: OwnerRef,
+  id: string,
+): Promise<Document | null> {
+  return prisma.document.findFirst({
+    where: { id, ...ownerWhere(owner) },
+  });
+}
+
+/**
+ * Delete an owned document and its stored file. Returns false if the document
+ * does not exist or is not owned by `owner`.
+ */
+export async function deleteDocument(
+  owner: OwnerRef,
+  id: string,
+): Promise<boolean> {
+  const doc = await getOwnedDocument(owner, id);
+  if (!doc) return false;
+
+  // Best-effort file removal; the row is the source of truth.
+  await localFileStore.delete(doc.storedName).catch(() => {});
+  await prisma.document.delete({ where: { id: doc.id } });
+  return true;
+}

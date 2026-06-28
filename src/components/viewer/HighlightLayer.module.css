@@ -1,0 +1,26 @@
+.layer {
+  position: absolute;
+  inset: 0;
+  /* The layer must not intercept text selection — only the boxes do. */
+  pointer-events: none;
+  z-index: 2;
+}
+
+.box {
+  position: absolute;
+  margin: 0;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: var(--accent-soft);
+  cursor: pointer;
+  pointer-events: auto;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+
+.box:hover,
+.boxActive {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
