@@ -28,9 +28,9 @@ test("full user journey: upload, render, toolbar, auth, history", async ({
   await expect(page.getByText(`/ ${FIXTURE_PAGES}`)).toBeVisible();
 
   // ---- 4. Toolbar: zoom ----
-  await expect(page.getByText("100%", { exact: true })).toBeVisible();
+  await expect(page.getByText("80%", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Zoom in" }).click();
-  await expect(page.getByText("110%", { exact: true })).toBeVisible();
+  await expect(page.getByText("90%", { exact: true })).toBeVisible();
 
   // ---- 4b. Toolbar: rotate (should not crash; canvas stays visible) ----
   await page.getByRole("button", { name: "Rotate clockwise" }).click();
@@ -45,6 +45,8 @@ test("full user journey: upload, render, toolbar, auth, history", async ({
   await page.getByRole("button", { name: "Toggle thumbnails" }).click();
 
   // ---- 5. Auth: sign in as the dev test user ----
+  // Sidebar collapses on doc load — expand it to reach the sign-in button.
+  await page.getByRole("button", { name: "Expand sidebar" }).click();
   await page.getByRole("button", { name: "Sign in as Test User" }).click();
   // signInDev redirects back to "/".
   await page.waitForURL("**/", { timeout: 30_000 });
@@ -76,6 +78,8 @@ test("full user journey: upload, render, toolbar, auth, history", async ({
   ).toBeVisible({ timeout: 30_000 });
 
   // ---- 9. Log out ----
+  // Sidebar collapsed again after navigating to the doc — expand to reach menu.
+  await page.getByRole("button", { name: "Expand sidebar" }).click();
   await page.getByRole("button", { name: "Account menu" }).click();
   await page.getByRole("menuitem", { name: "Log out" }).click();
   await page.waitForURL("**/", { timeout: 30_000 });

@@ -1,3 +1,16 @@
+@keyframes sidebarSlide {
+  from { transform: translateX(-6px); }
+  to   { transform: translateX(0); }
+}
+
+@keyframes miniAppear {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Expanded sidebar: slides in from the left on mount.
+   No opacity change (avoids any invisible flash); no delay so the slide
+   starts in sync with the grid expanding. */
 .sidebar {
   display: flex;
   flex-direction: column;
@@ -7,6 +20,7 @@
   background: var(--bg-sidebar);
   font-family: var(--font-sans);
   color: var(--text-primary);
+  animation: sidebarSlide 220ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .brand {
@@ -32,8 +46,16 @@
   color: var(--text-primary);
 }
 
-.collapse {
+/* Groups the dark-toggle + collapse buttons on the right side of the header. */
+.headerEnd {
   margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.collapse,
+.iconSmall {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -47,12 +69,16 @@
   cursor: pointer;
 }
 
-.collapse:hover {
+.collapse:hover,
+.iconSmall:hover {
   background: var(--bg-hover);
   color: var(--text-primary);
 }
 
 /* ---- Collapsed mini rail ---- */
+/* Mini icons are never visible on initial page load (sidebar starts expanded),
+   so `both` fill mode is safe: they stay invisible during the 80ms delay while
+   the grid column finishes narrowing, then fade in. */
 .mini {
   display: flex;
   flex-direction: column;
@@ -60,6 +86,7 @@
   gap: 6px;
   height: 100%;
   padding: 14px 0;
+  animation: miniAppear 160ms cubic-bezier(0.4, 0, 0.2, 1) 80ms both;
 }
 
 .miniButton {

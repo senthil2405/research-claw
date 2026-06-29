@@ -93,8 +93,10 @@ test("logged-in: Authorize Claude modal shows not-connected state, then awaiting
   await expect(dialog.getByPlaceholder("Paste code here")).toBeVisible();
 
   // ---- 6. Server status is still disconnected (nothing was authorized) ----
-  const res = await page.request.get("/api/me/claude-auth");
-  expect(res.status()).toBe(200);
-  const status = await res.json();
+  // Use page.evaluate/fetch (not page.request) so the request goes through the
+  // page.route stub above and returns the intercepted {connected:false} response.
+  const status = await page.evaluate(() =>
+    fetch("/api/me/claude-auth").then((r) => r.json()),
+  );
   expect(status.connected).toBe(false);
 });

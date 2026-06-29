@@ -50,6 +50,7 @@ export default function SelectionToolbar() {
         type="button"
         className={styles.button}
         aria-label="Ask Claude about this"
+        title="Ask Claude (⌘↵ / Ctrl+Enter)"
         onClick={() => docChat.startChatFromSelection()}
       >
         <svg

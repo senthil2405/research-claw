@@ -1,0 +1,9 @@
+ok the UI expperience looks great now..
+lets just add a bunch of keyboard shortcuts and make it legendary
+a. 'cmd/ctrl' + '+' , 'cmd/ctrl' + '-' --> for zooming in/out in the pdf renderer window (now the entire screen zooms in or out)
+b. 'cmd/ctrl' + 'enter' --> for creating a new chat window (if no text is selected then there should be a window created with no additional text as context and its location should point to the title of the document (if i click its row in the right sidebar it should open me the window and take me to the title of the document))
+c. 'esc' --> to close a created chat window (all standard rules of the close button of the chat window applies here)'
+d. when we open a chat window by default the cursor should be in the text box so the user can start texting (now i have to go and click on the text box to start typing)
+e. 'cmd/ctrl' + up key of keyboard -> to take to the top of the pdf (its a shortcut for the up arrow button display the shortcut when we hover over that button)
+
+Note: display these shortcut commands when users hover over their respective buttons so that users would no

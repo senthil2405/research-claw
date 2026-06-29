@@ -70,6 +70,9 @@ export function toChatMessageDTO(row: ChatMessage): ChatMessageDTO {
     highlightText: row.highlightText ?? null,
     turnIndex: row.turnIndex,
     seq: row.seq,
+    inputTokens: row.inputTokens ?? null,
+    outputTokens: row.outputTokens ?? null,
+    durationMs: row.durationMs ?? null,
     createdAt: row.createdAt.toISOString(),
   };
 }
@@ -230,62 +233,70 @@ export async function sendMessage(
   const doc = await requireOwnedDocument(owner, documentId);
   const highlight = await requireHighlight(documentId, highlightId);
 
-  const session = await getOrCreateSession(documentId);
-
   const pdfText = await getPdfText(documentId, doc.storedName);
   const systemPrompt = buildSystemPrompt(doc.filename, pdfText);
   const userMessage = buildUserMessage(highlight.selectedText, question);
-
   const auth = await resolveClaudeAuth(owner);
-  const result = await withSessionLock(documentId, () =>
-    runClaudeTurn({
+
+  // The entire critical section — session read, user turn, and the DB
+  // transaction that writes messages + advances the seq counter — runs inside
+  // the per-document lock so seqCounter and turnIndex reads are always fresh.
+  return withSessionLock(documentId, async () => {
+    const session = await getOrCreateSession(documentId);
+
+    // The full PDF text is already in the system prompt, so Claude has context
+    // from the very first message — no separate priming turn needed.
+    const turnResult = await runClaudeTurn({
       documentId,
       systemPrompt,
       userMessage,
       resumeSessionId: session.claudeSessionId,
       auth,
-    }),
-  );
+    });
 
-  // turnIndex is per-window; seq is global within the session.
-  const turnIndex = await prisma.chatMessage.count({ where: { highlightId } });
-  const userSeq = session.seqCounter;
-  const assistantSeq = userSeq + 1;
+    // turnIndex and seqCounter are read inside the lock so no concurrent
+    // request can interleave and produce duplicate values.
+    const turnIndex = await prisma.chatMessage.count({ where: { highlightId } });
+    const userSeq = session.seqCounter;
 
-  const [userRow, assistantRow] = await prisma.$transaction([
-    prisma.chatMessage.create({
-      data: {
-        sessionId: session.id,
-        highlightId,
-        role: "user",
-        content: question,
-        highlightText: highlight.selectedText,
-        turnIndex,
-        seq: userSeq,
-      },
-    }),
-    prisma.chatMessage.create({
-      data: {
-        sessionId: session.id,
-        highlightId,
-        role: "assistant",
-        content: result.text,
-        highlightText: null,
-        turnIndex: turnIndex + 1,
-        seq: assistantSeq,
-      },
-    }),
-    prisma.chatSession.update({
-      where: { id: session.id },
-      data: {
-        claudeSessionId: result.sessionId,
-        seqCounter: session.seqCounter + 2,
-      },
-    }),
-  ]);
+    const [userRow, assistantRow] = await prisma.$transaction([
+      prisma.chatMessage.create({
+        data: {
+          sessionId: session.id,
+          highlightId,
+          role: "user",
+          content: question,
+          highlightText: highlight.selectedText,
+          turnIndex,
+          seq: userSeq,
+        },
+      }),
+      prisma.chatMessage.create({
+        data: {
+          sessionId: session.id,
+          highlightId,
+          role: "assistant",
+          content: turnResult.text,
+          highlightText: null,
+          turnIndex: turnIndex + 1,
+          seq: userSeq + 1,
+          inputTokens: turnResult.inputTokens,
+          outputTokens: turnResult.outputTokens,
+          durationMs: turnResult.durationMs,
+        },
+      }),
+      prisma.chatSession.update({
+        where: { id: session.id },
+        data: {
+          claudeSessionId: turnResult.sessionId,
+          seqCounter: session.seqCounter + 2,
+        },
+      }),
+    ]);
 
-  return {
-    userMessage: toChatMessageDTO(userRow),
-    assistantMessage: toChatMessageDTO(assistantRow),
-  };
+    return {
+      userMessage: toChatMessageDTO(userRow),
+      assistantMessage: toChatMessageDTO(assistantRow),
+    };
+  });
 }

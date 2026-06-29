@@ -5,6 +5,7 @@ import { NewChatButton } from "./NewChatButton";
 import { DocumentHistoryList } from "./DocumentHistoryList";
 import { UserMenu } from "./UserMenu";
 import { useUiStore } from "@/store/uiStore";
+import { MoonIcon, SunIcon } from "@/components/viewer/icons";
 import styles from "./Sidebar.module.css";
 
 function ClawGlyph() {
@@ -35,6 +36,8 @@ function ClawGlyph() {
 export function Sidebar() {
   const collapsed = useUiStore((s) => s.sidebarCollapsed);
   const setCollapsed = useUiStore((s) => s.setSidebarCollapsed);
+  const darkMode = useUiStore((s) => s.darkMode);
+  const toggleDarkMode = useUiStore((s) => s.toggleDarkMode);
   const router = useRouter();
 
   if (collapsed) {
@@ -44,7 +47,7 @@ export function Sidebar() {
           type="button"
           className={styles.miniButton}
           aria-label="Expand sidebar"
-          title="Expand sidebar"
+          title="Expand sidebar (⌘. / Ctrl+.)"
           onClick={() => setCollapsed(false)}
         >
           <ClawGlyph />
@@ -71,6 +74,15 @@ export function Sidebar() {
             <line x1="5" y1="12" x2="19" y2="12" />
           </svg>
         </button>
+        <button
+          type="button"
+          className={styles.miniButton}
+          aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+          title={darkMode ? "Light mode" : "Dark mode"}
+          onClick={toggleDarkMode}
+        >
+          {darkMode ? <SunIcon size={18} /> : <MoonIcon size={18} />}
+        </button>
       </div>
     );
   }
@@ -82,27 +94,38 @@ export function Sidebar() {
           <ClawGlyph />
         </span>
         <span className={styles.brandName}>Research Claw</span>
-        <button
-          type="button"
-          className={styles.collapse}
-          aria-label="Collapse sidebar"
-          title="Collapse sidebar"
-          onClick={() => setCollapsed(true)}
-        >
-          <svg
-            width="18"
-            height="18"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
+        <div className={styles.headerEnd}>
+          <button
+            type="button"
+            className={styles.iconSmall}
+            aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+            title={darkMode ? "Light mode" : "Dark mode"}
+            onClick={toggleDarkMode}
           >
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-        </button>
+            {darkMode ? <SunIcon size={16} /> : <MoonIcon size={16} />}
+          </button>
+          <button
+            type="button"
+            className={styles.collapse}
+            aria-label="Collapse sidebar"
+            title="Collapse sidebar (⌘. / Ctrl+.)"
+            onClick={() => setCollapsed(true)}
+          >
+            <svg
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+        </div>
       </header>
 
       <div className={styles.actions}>

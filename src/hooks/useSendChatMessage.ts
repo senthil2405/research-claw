@@ -54,6 +54,9 @@ export function useSendChatMessage(documentId: string, highlightId: string) {
         highlightText: null,
         turnIndex: lastTurn + 1,
         seq: lastSeq + 1,
+        inputTokens: null,
+        outputTokens: null,
+        durationMs: null,
         createdAt: new Date().toISOString(),
       };
 

@@ -68,6 +68,9 @@ export function DocumentHistoryItem({ doc }: { doc: DocumentMeta }) {
     >
       <span className={styles.text}>
         <span className={styles.filename}>{doc.filename}</span>
+        {doc.title ? (
+          <span className={styles.docTitle}>{doc.title}</span>
+        ) : null}
         {meta ? <span className={styles.meta}>{meta}</span> : null}
       </span>
 

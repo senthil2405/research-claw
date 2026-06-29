@@ -18,6 +18,9 @@ import { useViewerStore } from "@/store/viewerStore";
 import PdfPage from "./PdfPage";
 import styles from "./PdfViewer.module.css";
 
+const SCALE_MIN = 0.25;
+const SCALE_MAX = 5;
+
 export interface PdfViewerProps {
   /**
    * What to render. Either a URL string (an object URL or an API route like
@@ -58,6 +61,10 @@ export function PdfViewer({ src }: PdfViewerProps) {
 
   // ---- Local state ----
   const [container, setContainer] = useState({ width: 0, height: 0 });
+  // `liveContainer` tracks the stage size on every ResizeObserver tick (no
+  // debounce). It drives the container-resize CSS bridge so the PDF smoothly
+  // tracks the sidebar animation without triggering a pdfjs re-render each frame.
+  const [liveContainer, setLiveContainer] = useState({ width: 0, height: 0 });
   // First-page aspect ratio (height / width); null until the document loads.
   const [firstAspect, setFirstAspect] = useState<number | null>(null);
   const [listOffset, setListOffset] = useState(0);
@@ -65,11 +72,57 @@ export function PdfViewer({ src }: PdfViewerProps) {
   // Bumped to force the <Document> to remount and retry after an error.
   const [reloadKey, setReloadKey] = useState(0);
 
+  // ---- Zoom flicker prevention ----
+  // `renderScale` lags behind the store's `scale` by ~150 ms during rapid
+  // changes (pinch / trackpad). `renderWidth` is computed from `renderScale`
+  // so the canvas only repaints once per gesture rather than on every tick.
+  // A CSS `scale()` transform on the column bridges the visual gap so users
+  // see smooth, immediate zoom feedback without any blank-page flash.
+  const [renderScale, setRenderScale] = useState(scale);
+  const renderScaleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Track the previous renderScale so we know how much to shift scrollLeft.
+  const prevRenderScaleRef = useRef(renderScale);
+  // Incrementing this tells every PdfPage to capture its canvas snapshot NOW —
+  // one rAF before renderScale changes so the canvas still has the old pixels.
+  const [captureSignal, setCaptureSignal] = useState(0);
+  // Debounce timer for container-resize events (sidebar slide animation fires
+  // a ResizeObserver callback on every rAF; batching prevents per-frame renders).
+  const containerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Memoize the file so react-pdf's `===` change-detection stays stable across
   // re-renders that don't actually change `src`.
   const file = useMemo(() => src, [src]);
 
   const aspect = firstAspect ?? DEFAULT_ASPECT;
+
+  useEffect(() => {
+    if (renderScaleTimer.current) clearTimeout(renderScaleTimer.current);
+    renderScaleTimer.current = setTimeout(() => {
+      // Signal pages to snapshot their canvas pixels NOW, while renderScale
+      // hasn't changed yet and the canvas still holds the old frame.
+      // One rAF later we commit the new renderScale — by then the snapshots
+      // are in the DOM so the canvas clear (triggered by the width attr change)
+      // is fully covered.
+      setCaptureSignal((n) => n + 1);
+      requestAnimationFrame(() => setRenderScale(scale));
+    }, 150);
+    return () => {
+      if (renderScaleTimer.current) clearTimeout(renderScaleTimer.current);
+    };
+  }, [scale]);
+
+  // After renderScale commits, shift scrollLeft so the point at the viewport
+  // centre during the CSS zoom stays centred after the real layout commits.
+  // Δ = container.width * (renderScale - prev) / 2  (derived from top-center origin).
+  useEffect(() => {
+    const prev = prevRenderScaleRef.current;
+    prevRenderScaleRef.current = renderScale;
+    if (fitMode !== "custom" || renderScale === prev || prev === 0) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+    const delta = (container.width * (renderScale - prev)) / 2;
+    stage.scrollLeft = Math.max(0, stage.scrollLeft + delta);
+  }, [renderScale, fitMode, container.width]);
 
   // ---- Container measurement ----
   // react-pdf's <Document> only mounts its children (the stage element) AFTER
@@ -80,23 +133,51 @@ export function PdfViewer({ src }: PdfViewerProps) {
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
-    const update = () =>
-      setContainer({ width: el.clientWidth, height: el.clientHeight });
-    update();
+    // Measure immediately so renderWidth is non-zero before any page renders.
+    // At this point no canvas exists yet, so no snapshot is needed.
+    const initial = { width: el.clientWidth, height: el.clientHeight };
+    setContainer(initial);
+    setLiveContainer(initial);
+    // ResizeObserver callbacks: update liveContainer immediately (drives the CSS
+    // scale bridge so the PDF visually tracks the sidebar animation) while
+    // debouncing the committed container (drives pdfjs re-renders so the canvas
+    // only repaints once after the animation settles, not every rAF of the 260 ms
+    // sidebar slide).
+    const update = () => {
+      const w = el.clientWidth;
+      const h = el.clientHeight;
+      setLiveContainer({ width: w, height: h });
+      if (containerTimerRef.current) clearTimeout(containerTimerRef.current);
+      containerTimerRef.current = setTimeout(() => {
+        setCaptureSignal((n) => n + 1);
+        requestAnimationFrame(() => setContainer({ width: w, height: h }));
+      }, 50);
+    };
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      if (containerTimerRef.current) clearTimeout(containerTimerRef.current);
+    };
   }, [numPages]);
 
   // ---- Computed render width ----
+  // Uses `renderScale` (debounced) rather than `scale` (live) so the canvas
+  // only repaints once per gesture. The CSS zoom bridge below fills the gap.
   const renderWidth = useMemo(() => {
     if (container.width <= 0) return 0;
+    // Fit modes get STAGE_PADDING_X breathing room on each side.
     const widthFit = Math.min(
       MAX_FIT_WIDTH,
       Math.max(MIN_WIDTH, container.width - STAGE_PADDING_X),
     );
     if (fitMode === "custom") {
-      return Math.round(widthFit * scale);
+      // In zoomed mode: use the full viewport width as the base so the page
+      // fills edge-to-edge at scale=1. This aligns the CSS-transform anchor
+      // (viewport center) with the post-commit layout, eliminating the
+      // post-gesture nudge and the left-margin artifact.
+      const base = Math.max(MIN_WIDTH, container.width);
+      return Math.round(base * renderScale);
     }
     if (fitMode === "page") {
       if (container.height <= 0) return Math.round(widthFit);
@@ -106,7 +187,31 @@ export function PdfViewer({ src }: PdfViewerProps) {
     }
     // 'width'
     return Math.round(widthFit);
-  }, [container.width, container.height, fitMode, scale, aspect]);
+  }, [container.width, container.height, fitMode, renderScale, aspect]);
+
+  // CSS zoom multiplier applied to the column while `renderScale` hasn't
+  // caught up to `scale` yet. Gives instant visual feedback with no blank.
+  const cssZoom = fitMode === "custom" && renderScale > 0 ? scale / renderScale : 1;
+
+  // Live render width (same formula as renderWidth but using liveContainer).
+  // Drives the container-resize CSS bridge below.
+  const liveRenderWidth = useMemo(() => {
+    if (liveContainer.width <= 0) return 0;
+    const widthFit = Math.min(MAX_FIT_WIDTH, Math.max(MIN_WIDTH, liveContainer.width - STAGE_PADDING_X));
+    if (fitMode === "custom") return Math.round(Math.max(MIN_WIDTH, liveContainer.width) * renderScale);
+    if (fitMode === "page") {
+      if (liveContainer.height <= 0) return Math.round(widthFit);
+      const heightFitWidth = (liveContainer.height - STAGE_PADDING_Y) / aspect;
+      return Math.round(Math.max(MIN_WIDTH, Math.min(widthFit, heightFitWidth)));
+    }
+    return Math.round(widthFit);
+  }, [liveContainer.width, liveContainer.height, fitMode, renderScale, aspect]);
+
+  // Scale the column to visually match liveRenderWidth while the canvas hasn't
+  // re-rendered yet. Resets to 1 once container commits (50 ms after the sidebar
+  // animation ends). Combined with cssZoom so one transform covers both cases.
+  const containerCssScale = renderWidth > 0 ? liveRenderWidth / renderWidth : 1;
+  const columnScale = cssZoom * containerCssScale;
 
   // Effective slot height for size estimation. A 90°/270° rotation swaps the
   // page's bounding box (rendered height becomes the unrotated width).
@@ -232,6 +337,62 @@ export function PdfViewer({ src }: PdfViewerProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file]);
 
+  // ---- Trackpad pinch-to-zoom (ctrl + wheel) ----
+  // Browsers report trackpad pinch as wheel events with ctrlKey=true.
+  // Must be non-passive so we can call preventDefault() and stop the browser
+  // from zooming the entire page instead of just the PDF content.
+  // Uses [numPages] as dep (same reason as the ResizeObserver above):
+  // react-pdf renders its loading state INSTEAD of children while loading,
+  // so stageRef.current is null on the first render; the effect must re-run
+  // once numPages is set and the stage element actually exists in the DOM.
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey) return;
+      e.preventDefault();
+      const { scale, setScale } = useViewerStore.getState();
+      // Exponential feel: small deltaY = smooth zoom, large = faster jump.
+      const next = Math.min(SCALE_MAX, Math.max(SCALE_MIN, scale * Math.exp(-e.deltaY / 150)));
+      setScale(next);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [numPages]); // re-run once the stage mounts after PDF load
+
+  // ---- Touch pinch-to-zoom (two-finger on touch screens) ----
+  useEffect(() => {
+    const el = stageRef.current;
+    if (!el) return;
+    let lastDist = 0;
+
+    const dist = (t: TouchList) =>
+      Math.hypot(t[1].clientX - t[0].clientX, t[1].clientY - t[0].clientY);
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) lastDist = dist(e.touches);
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || lastDist === 0) return;
+      e.preventDefault();
+      const d = dist(e.touches);
+      const { scale, setScale } = useViewerStore.getState();
+      const next = Math.min(SCALE_MAX, Math.max(SCALE_MIN, scale * (d / lastDist)));
+      lastDist = d;
+      setScale(next);
+    };
+    const onTouchEnd = () => { lastDist = 0; };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+    };
+  }, [numPages]); // re-run once the stage mounts after PDF load
+
   // ---- Document callbacks ----
   const handleLoadSuccess = useCallback(
     (pdf: PdfDocumentProxy) => {
@@ -297,8 +458,30 @@ export function PdfViewer({ src }: PdfViewerProps) {
         error={errorNode}
         className={styles.document}
       >
-        <div ref={stageRef} className={styles.stage}>
-          <div ref={listRef} className={styles.column} style={{ width: "100%" }}>
+        <div ref={stageRef} className={styles.stage} data-pdf-stage>
+          <div
+            ref={listRef}
+            className={styles.column}
+            style={{
+              width: "100%",
+              // In fit modes: add STAGE_PADDING_X so the page has breathing room
+              // and a horizontal scrollbar appears if it overflows.
+              // In custom/zoom mode: page fills edge-to-edge (no left-margin
+              // artifact) and aligns with the CSS-zoom anchor (viewport center),
+              // so the post-gesture snap is eliminated.
+              minWidth:
+                renderWidth > 0
+                  ? fitMode === "custom"
+                    ? renderWidth
+                    : renderWidth + STAGE_PADDING_X
+                  : undefined,
+              // Visual-only scale while pdfjs hasn't re-rendered yet (covers both
+              // zoom gestures and sidebar resize). Resets to 1 once renderScale
+              // and container both commit.
+              transform: columnScale !== 1 ? `scale(${columnScale})` : undefined,
+              transformOrigin: "top center",
+            }}
+          >
             {showPages ? (
               <div
                 style={{
@@ -325,6 +508,7 @@ export function PdfViewer({ src }: PdfViewerProps) {
                       width={renderWidth}
                       rotation={rotation}
                       onVisible={handleVisible}
+                      captureSignal={captureSignal}
                     />
                   </div>
                 ))}

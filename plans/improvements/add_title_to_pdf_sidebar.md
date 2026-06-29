@@ -1,0 +1,1 @@
+in the left side bar where pdfs are grouped by their names lets also add a line with the title of the pdf to improve readability

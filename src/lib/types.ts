@@ -20,6 +20,7 @@ export interface DocumentMeta {
   filename: string;
   sizeBytes: number;
   pageCount: number | null;
+  title: string | null;
   createdAt: string; // ISO 8601
 }
 
@@ -62,6 +63,9 @@ export interface ChatMessageDTO {
   highlightText: string | null; // selected text shown above a user question
   turnIndex: number; // order within the window
   seq: number; // global order within the document's session
+  inputTokens: number | null;
+  outputTokens: number | null;
+  durationMs: number | null;
   createdAt: string;
 }
 

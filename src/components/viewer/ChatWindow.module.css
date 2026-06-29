@@ -61,11 +61,32 @@
   width: 16px;
   height: 16px;
 }
-/* Visible corner grab dots. */
-.handle_ne::after,
-.handle_nw::after,
-.handle_se::after,
-.handle_sw::after {
+.handle_ne {
+  top: 0;
+  right: 0;
+  cursor: nesw-resize;
+}
+.handle_nw {
+  top: 0;
+  left: 0;
+  cursor: nwse-resize;
+}
+.handle_se {
+  bottom: 0;
+  right: 0;
+  cursor: nwse-resize;
+}
+.handle_sw {
+  bottom: 0;
+  left: 0;
+  cursor: nesw-resize;
+}
+
+/* Corner grab dots: only visible while the window is in resize or drag mode. */
+.windowResizing .handle_ne::after,
+.windowResizing .handle_nw::after,
+.windowResizing .handle_se::after,
+.windowResizing .handle_sw::after {
   content: "";
   position: absolute;
   width: 9px;
@@ -74,42 +95,10 @@
   border: 1.5px solid var(--bg-surface);
   border-radius: 2px;
 }
-.handle_ne {
-  top: 0;
-  right: 0;
-  cursor: nesw-resize;
-}
-.handle_ne::after {
-  top: 2px;
-  right: 2px;
-}
-.handle_nw {
-  top: 0;
-  left: 0;
-  cursor: nwse-resize;
-}
-.handle_nw::after {
-  top: 2px;
-  left: 2px;
-}
-.handle_se {
-  bottom: 0;
-  right: 0;
-  cursor: nwse-resize;
-}
-.handle_se::after {
-  bottom: 2px;
-  right: 2px;
-}
-.handle_sw {
-  bottom: 0;
-  left: 0;
-  cursor: nesw-resize;
-}
-.handle_sw::after {
-  bottom: 2px;
-  left: 2px;
-}
+.windowResizing .handle_ne::after { top: 2px; right: 2px; }
+.windowResizing .handle_nw::after { top: 2px; left: 2px; }
+.windowResizing .handle_se::after { bottom: 2px; right: 2px; }
+.windowResizing .handle_sw::after { bottom: 2px; left: 2px; }
 
 /* ---- Header (drag handle) ---- */
 .header {
@@ -256,6 +245,15 @@
   color: var(--text-primary);
   border: 1px solid var(--border);
   border-bottom-left-radius: 4px;
+}
+
+.tokenMeta {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  padding-left: 2px;
+  letter-spacing: 0.01em;
+  opacity: 0.75;
 }
 
 /* ---- Typing indicator ---- */

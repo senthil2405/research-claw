@@ -86,11 +86,11 @@ const DEFAULTS: Pick<
 > = {
   numPages: 0,
   currentPage: 1,
-  scale: 1,
+  scale: 0.8,
   rotation: 0,
-  fitMode: "width",
+  fitMode: "custom",
   thumbsOpen: false,
-  chatsPanelOpen: false,
+  chatsPanelOpen: true,
   scrollRequest: null,
 };
 

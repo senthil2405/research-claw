@@ -16,6 +16,8 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useViewerStore } from "@/store/viewerStore";
+import { useUiStore } from "@/store/uiStore";
+import { useDocChatOptional } from "./DocChatContext";
 import styles from "./PdfToolbar.module.css";
 import {
   ArrowUpIcon,
@@ -23,8 +25,10 @@ import {
   DownloadIcon,
   FitPageIcon,
   FitWidthIcon,
+  MoonIcon,
   PrintIcon,
   RotateIcon,
+  SunIcon,
   ThumbnailsIcon,
   ZoomInIcon,
   ZoomOutIcon,
@@ -57,6 +61,10 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
   const requestScroll = useViewerStore((s) => s.requestScroll);
   const chatsPanelOpen = useViewerStore((s) => s.chatsPanelOpen);
   const toggleChatsPanel = useViewerStore((s) => s.toggleChatsPanel);
+  const darkMode = useUiStore((s) => s.darkMode);
+  const toggleDarkMode = useUiStore((s) => s.toggleDarkMode);
+  const docChat = useDocChatOptional();
+  const chatCount = docChat?.highlights.length ?? 0;
   const setCurrentPageStore = useViewerStore((s) => s.setCurrentPage);
 
   // Local, editable mirror of the page box. Kept in sync with the store unless
@@ -220,7 +228,7 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
           type="button"
           className={styles.iconButton}
           aria-label="Zoom out"
-          title="Zoom out"
+          title="Zoom out (⌘− / Ctrl+−)"
           disabled={scale <= SCALE_MIN}
           onClick={zoomOut}
         >
@@ -229,9 +237,9 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
         <button
           type="button"
           className={styles.zoomValue}
-          aria-label={`Zoom ${zoomPct} percent, click to reset to 100%`}
-          title="Reset zoom to 100%"
-          onClick={() => setScale(1)}
+          aria-label={`Zoom ${zoomPct} percent, click to reset to 80%`}
+          title="Reset zoom to 80%"
+          onClick={() => setScale(0.8)}
           style={{ background: "transparent", border: "none", cursor: "pointer" }}
         >
           {zoomPct}%
@@ -240,7 +248,7 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
           type="button"
           className={styles.iconButton}
           aria-label="Zoom in"
-          title="Zoom in"
+          title="Zoom in (⌘= / Ctrl+=)"
           disabled={scale >= SCALE_MAX}
           onClick={zoomIn}
         >
@@ -305,7 +313,7 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
         type="button"
         className={styles.iconButton}
         aria-label="Go to top"
-        title="Go to top"
+        title="Go to top (⌘↑ / Ctrl+↑)"
         disabled={!hasDoc}
         onClick={() => {
           setCurrentPageStore(1);
@@ -315,17 +323,35 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
         <ArrowUpIcon />
       </button>
 
-      {/* 10. Chat history panel toggle (right) */}
+      {/* 10. Dark / light mode toggle */}
       <button
         type="button"
-        className={`${styles.iconButton} ${chatsPanelOpen ? styles.active : ""}`}
-        aria-label="Toggle chat history"
-        aria-pressed={chatsPanelOpen}
-        title="Chats in this PDF"
-        onClick={toggleChatsPanel}
+        className={styles.iconButton}
+        aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+        title={darkMode ? "Light mode" : "Dark mode"}
+        onClick={toggleDarkMode}
       >
-        <ChatPanelIcon />
+        {darkMode ? <SunIcon /> : <MoonIcon />}
       </button>
+
+      {/* 11. Chat history panel toggle (right) */}
+      <div className={styles.chatPanelWrap}>
+        <button
+          type="button"
+          className={`${styles.iconButton} ${chatsPanelOpen ? styles.active : ""}`}
+          aria-label="Toggle chat history"
+          aria-pressed={chatsPanelOpen}
+          title="Chats in this PDF (⌘/ / Ctrl+/)"
+          onClick={toggleChatsPanel}
+        >
+          <ChatPanelIcon />
+        </button>
+        {chatCount > 0 && (
+          <span className={styles.chatBadge} aria-label={`${chatCount} chats`}>
+            {chatCount > 99 ? "99+" : chatCount}
+          </span>
+        )}
+      </div>
 
       {/* Hidden iframe used for printing. */}
       <iframe

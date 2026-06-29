@@ -1,0 +1,3 @@
+- [Research Claw project](research-claw-project.md) — multi-part PDF reader; Parts A/B/C done + many polish features; full stack + gotchas
+- [Claude auth constraint](claude-auth-constraint.md) — per-user Claude account auth decision history; account-login via CLI shipped in Part C v2
+- [Always run E2E](always-run-e2e.md) — after every change, start the app + run the full Playwright/Vitest gate to catch regressions

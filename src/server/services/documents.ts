@@ -4,7 +4,7 @@ import type { Document } from "@prisma/client";
 
 import { prisma } from "@/server/db";
 import { localFileStore } from "@/server/files/localStore";
-import { getPageCount } from "@/server/pdf";
+import { getPageCount, getPdfTitle } from "@/server/pdf";
 import { ownerWhere, type OwnerRef } from "@/server/owner";
 import type { DocumentMeta } from "@/lib/types";
 
@@ -18,6 +18,7 @@ export function toDocumentMeta(doc: Document): DocumentMeta {
     filename: doc.filename,
     sizeBytes: doc.sizeBytes,
     pageCount: doc.pageCount ?? null,
+    title: doc.title ?? null,
     createdAt: doc.createdAt.toISOString(),
   };
 }
@@ -39,8 +40,12 @@ export async function createDocument(
   owner: OwnerRef,
   input: CreateDocumentInput,
 ): Promise<DocumentMeta> {
-  // Throws on invalid PDF — let the caller map to 415.
-  const pageCount = await getPageCount(input.buffer);
+  // getPageCount throws on invalid PDF — let the caller map to 415.
+  // getPdfTitle never throws (returns null on failure) so run in parallel.
+  const [pageCount, title] = await Promise.all([
+    getPageCount(input.buffer),
+    getPdfTitle(input.buffer),
+  ]);
 
   const storedName = `${randomUUID()}.pdf`;
   await localFileStore.save(storedName, input.buffer);
@@ -53,6 +58,7 @@ export async function createDocument(
         storedName,
         sizeBytes: input.sizeBytes,
         pageCount,
+        title,
       },
     });
     return toDocumentMeta(doc);

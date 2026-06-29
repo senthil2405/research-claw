@@ -1,0 +1,3 @@
+ok the UI user ex looks promising now, 
+One small change.. while the resize button is good i would ideally like to just take the cursor to the edges of the screen and click and resize the window
+lets implement this user should be able to resize by just taking the cursor the the edges and selecting and dragging without the need to click teh resize button, the cursor should change shape from mouse to resize icon when it hits the borders of the chat window and when the user clicks on the border the border should light up (you can use the same border UI that you have used when the resize button is clicked )

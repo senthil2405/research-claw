@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PDFDocument } from "pdf-lib";
-import { getPageCount, isPdfMagic } from "@/server/pdf";
+import { getPageCount, getPdfTitle, isPdfMagic } from "@/server/pdf";
 
 async function makePdf(pages: number): Promise<Uint8Array> {
   const doc = await PDFDocument.create();
@@ -38,5 +38,34 @@ describe("getPageCount", () => {
     await expect(
       getPageCount(Buffer.from("this is definitely not a pdf")),
     ).rejects.toThrow(/Unable to parse PDF/);
+  });
+});
+
+describe("getPdfTitle", () => {
+  it("returns the title when set in the PDF Info Dictionary", async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([300, 400]);
+    doc.setTitle("Attention Is All You Need");
+    const bytes = await doc.save();
+    expect(await getPdfTitle(bytes)).toBe("Attention Is All You Need");
+  });
+
+  it("returns null when no title is set", async () => {
+    const bytes = await makePdf(1);
+    expect(await getPdfTitle(bytes)).toBeNull();
+  });
+
+  it("returns null for an empty/whitespace-only title", async () => {
+    const doc = await PDFDocument.create();
+    doc.addPage([300, 400]);
+    doc.setTitle("   ");
+    const bytes = await doc.save();
+    expect(await getPdfTitle(bytes)).toBeNull();
+  });
+
+  it("returns null for garbage bytes without throwing", async () => {
+    await expect(
+      getPdfTitle(Buffer.from("not a pdf")),
+    ).resolves.toBeNull();
   });
 });

@@ -6,9 +6,9 @@ import { getAuthStatus, runCliChat, userConfigDir } from "@/server/claudeCli";
 // Chat backend. Each logged-in user authorizes their OWN Anthropic account via
 // the Claude Code CLI (`claude auth login`); chat then runs `claude -p` against
 // that user's session. Resolution order:
-//   1. account  — the user completed `claude auth login` (their config dir)
-//   2. sharedKey — an owner ANTHROPIC_API_KEY in env (optional fallback)
-//   3. mock      — neither available
+//   1. account  -- the user completed `claude auth login` (their config dir)
+//   2. sharedKey -- an owner ANTHROPIC_API_KEY in env (optional fallback)
+//   3. mock      -- neither available
 
 export type ClaudeAuthMode = "account" | "sharedKey" | "mock";
 
@@ -28,6 +28,9 @@ export interface ClaudeTurnInput {
 export interface ClaudeTurnResult {
   text: string;
   sessionId: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  durationMs: number | null;
   mock: boolean;
 }
 
@@ -88,17 +91,20 @@ export async function withSessionLock<T>(
 function mockReply(input: ClaudeTurnInput): ClaudeTurnResult {
   const q = input.userMessage.slice(0, 400);
   const text =
-    "**(Mock Claude — click “Authorize Claude” to sign in with your account)**\n\n" +
+    '**(Mock Claude -- click "Authorize Claude" to sign in with your account)**\n\n' +
     "Here's a formatted sample so you can see rendering. The classifier is " +
     "**f = σ ∘ g**, built from two pieces:\n\n" +
-    "- **g** : ℝ^d → ℝ^k — the raw network, outputting *K* unbounded logits.\n" +
-    "- **σ** — the softmax, which turns logits into probabilities:\n\n" +
+    "- **g** : ℝ^d → ℝ^k -- the raw network, outputting *K* unbounded logits.\n" +
+    "- **σ** -- the softmax, which turns logits into probabilities:\n\n" +
     "$$\\sigma_i(z) = \\frac{e^{z_i}}{\\sum_{j=1}^{k} e^{z_j}}$$\n\n" +
     "Inline math like $\\sigma_i(z) \\in (0,1)$ renders too, and so does `code`.\n\n" +
     `You asked: "${q}"`;
   return {
     text,
     sessionId: input.resumeSessionId ?? `mock-${input.documentId}`,
+    inputTokens: null,
+    outputTokens: null,
+    durationMs: null,
     mock: true,
   };
 }
@@ -138,5 +144,12 @@ export async function runClaudeTurn(
     }
   }
 
-  return { text: result.text, sessionId: result.sessionId, mock: false };
+  return {
+    text: result.text,
+    sessionId: result.sessionId,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    durationMs: result.durationMs,
+    mock: false,
+  };
 }

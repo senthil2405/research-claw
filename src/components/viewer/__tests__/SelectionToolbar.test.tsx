@@ -26,6 +26,7 @@ function makeCtx(over: Partial<DocChatContextValue> = {}): DocChatContextValue {
     documentId: "doc1",
     highlights: [],
     startChatFromSelection: vi.fn(),
+    startChatNoSelection: vi.fn(),
     openWindow: vi.fn(),
     ...over,
   };

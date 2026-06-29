@@ -250,23 +250,25 @@ export interface CliChatInput {
 export interface CliChatResult {
   text: string;
   sessionId: string | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  durationMs: number | null;
 }
 
 /** Run one chat turn through `claude -p`, returning the reply + session id. */
 export async function runCliChat(input: CliChatInput): Promise<CliChatResult> {
-  const args = [
-    "-p",
-    "--output-format",
-    "json",
-    "--model",
-    MODEL,
-    "--append-system-prompt",
-    input.systemPrompt,
-  ];
+  const args = ["-p", "--output-format", "json", "--model", MODEL];
   if (input.resumeSessionId) {
+    // Resuming: history already holds the system prompt + PDF from turn 1.
     args.push("--resume", input.resumeSessionId);
   } else {
-    args.push("--session-id", input.newSessionId);
+    // New session: inject the system prompt (which carries the full PDF text).
+    args.push(
+      "--append-system-prompt",
+      input.systemPrompt,
+      "--session-id",
+      input.newSessionId,
+    );
   }
 
   const env: NodeJS.ProcessEnv = { ...process.env };
@@ -276,6 +278,8 @@ export async function runCliChat(input: CliChatInput): Promise<CliChatResult> {
   } else {
     env.ANTHROPIC_API_KEY = input.auth.apiKey;
   }
+
+  const startMs = Date.now();
 
   return new Promise<CliChatResult>((resolve, reject) => {
     const child = spawn(CLAUDE_BIN, args, { env });
@@ -310,11 +314,22 @@ export async function runCliChat(input: CliChatInput): Promise<CliChatResult> {
           parsed.result ?? parsed.text ?? parsed.output ?? "";
         const sessionId: string | null =
           parsed.session_id ?? input.resumeSessionId ?? input.newSessionId;
+        // Token counts: Claude CLI outputs these at the top level or under `usage`.
+        const inputTokens: number | null =
+          parsed.total_input_tokens ??
+          parsed.usage?.input_tokens ??
+          null;
+        const outputTokens: number | null =
+          parsed.total_output_tokens ??
+          parsed.usage?.output_tokens ??
+          null;
+        const durationMs: number | null =
+          parsed.duration_ms ?? parsed.duration_api_ms ?? (Date.now() - startMs);
         if (!text) {
           reject(new Error("Claude returned an empty response"));
           return;
         }
-        resolve({ text, sessionId });
+        resolve({ text, sessionId, inputTokens, outputTokens, durationMs });
       } catch {
         reject(new Error("Could not parse Claude CLI output"));
       }

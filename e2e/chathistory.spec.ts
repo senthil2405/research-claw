@@ -64,8 +64,10 @@ test("chat history panel lists chats and reopens them; go-to-top is present", as
   await dialog.getByRole("button", { name: "Close chat window" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
-  // ---- Open the chat-history panel from the toolbar ----
-  await page.getByRole("button", { name: "Toggle chat history" }).click();
+  // ---- Badge: the toolbar toggle button should now show "1" ----
+  await expect(page.locator('[aria-label="1 chats"]')).toBeVisible();
+
+  // ---- Chat-history panel is open by default; verify it shows the new chat ----
   const panel = page.getByRole("complementary", { name: "Chats in this PDF" });
   await expect(panel).toBeVisible();
   // The created chat is listed (snippet of the selected text).

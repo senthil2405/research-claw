@@ -155,6 +155,9 @@ describe("runCliChat", () => {
     await expect(p).resolves.toEqual({
       text: "Hi from Claude",
       sessionId: "sess-xyz",
+      inputTokens: null,
+      outputTokens: null,
+      durationMs: expect.any(Number),
     });
     // It invoked `claude -p --output-format json ...`.
     const [, args] = spawnMock.mock.calls[0];

@@ -31,6 +31,24 @@ export async function getPageCount(buf: Buffer | Uint8Array): Promise<number> {
 }
 
 /**
+ * Read the /Title field from a PDF's Info Dictionary. Returns null when the
+ * field is absent, empty, or the PDF cannot be parsed — a missing title is not
+ * an error and should never block an upload.
+ */
+export async function getPdfTitle(buf: Buffer | Uint8Array): Promise<string | null> {
+  try {
+    const doc = await PDFDocument.load(buf, {
+      updateMetadata: false,
+      ignoreEncryption: true,
+    });
+    const raw = doc.getTitle()?.trim();
+    return raw || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Extract the plain text of a PDF for use as model context. Uses the pdfjs-dist
  * legacy build, which runs in Node without a browser worker. Pages are joined
  * with form-feed-ish separators so the model can tell pages apart. Never

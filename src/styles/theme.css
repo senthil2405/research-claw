@@ -1,4 +1,17 @@
 /* Research Claw — Claude-inspired palette and shared design tokens. */
+:root,
+html.dark {
+  /* Layout tokens stay the same across modes */
+  --sidebar-width: 272px;
+  --toolbar-height: 48px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  /* Typography tokens stay the same across modes */
+  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-serif: var(--font-lora), Georgia, "Times New Roman", serif;
+}
+
 :root {
   /* Surfaces */
   --bg-app: #f5f4ee; /* main canvas (warm cream) */
@@ -30,14 +43,39 @@
   --danger: #b3422f;
   --danger-soft: rgba(179, 66, 47, 0.1);
 
-  /* Layout */
-  --sidebar-width: 272px;
-  --toolbar-height: 48px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
+}
 
-  /* Typography */
-  --font-sans: var(--font-inter), system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-serif: var(--font-lora), Georgia, "Times New Roman", serif;
+/* ---- Dark mode ---- */
+/* Applied by adding `dark` class to <html>. All components use var() so they
+   get dark styling automatically. PDF page backgrounds stay white (real docs). */
+html.dark {
+  /* Surfaces */
+  --bg-app: #1b1a18;
+  --bg-surface: #232220;
+  --bg-sidebar: #1f1e1c;
+  --bg-hover: #2d2b27;
+
+  /* Accent — slightly lifted terracotta for dark-bg readability */
+  --accent: #e08560;
+  --accent-hover: #d97757;
+  --accent-soft: rgba(224, 133, 96, 0.16);
+
+  /* Text */
+  --text-primary: #f0ede6;
+  --text-secondary: #c4beb3;
+  --text-muted: #7f796f;
+  --text-on-accent: #ffffff;
+
+  /* Lines */
+  --border: #2e2c28;
+  --border-strong: #3d3b36;
+
+  /* PDF stage — near-black; pages keep white so the document reads naturally */
+  --pdf-stage-bg: #111110;
+  --pdf-page-bg: #ffffff;
+  --pdf-page-shadow: rgba(0, 0, 0, 0.55);
+
+  /* Feedback */
+  --danger: #e05c44;
+  --danger-soft: rgba(224, 92, 68, 0.15);
 }

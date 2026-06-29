@@ -47,6 +47,9 @@ function msg(partial: Partial<ChatMessageDTO> & { id: string }): ChatMessageDTO 
     highlightText: null,
     turnIndex: 0,
     seq: 0,
+    inputTokens: null,
+    outputTokens: null,
+    durationMs: null,
     createdAt: new Date().toISOString(),
     ...partial,
   };

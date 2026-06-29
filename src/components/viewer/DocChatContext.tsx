@@ -9,6 +9,8 @@ export interface DocChatContextValue {
   highlights: HighlightDTO[];
   /** Create a highlight from the current chatStore.activeSelection and open its window. */
   startChatFromSelection: () => void;
+  /** Create an unanchored chat window (no selected text) pointing to page 1. */
+  startChatNoSelection: () => void;
   /**
    * Open (or focus/un-minimize) the chat window for a highlight. Pass the
    * highlight's on-screen placement (its bounds + page rect) so the window opens

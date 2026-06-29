@@ -138,6 +138,31 @@
   color: var(--text-secondary);
 }
 
+/* ---- Chat panel button with count badge ---- */
+.chatPanelWrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.chatBadge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--accent);
+  color: var(--text-on-accent);
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+  /* Keep on top of the button's own content */
+  z-index: 1;
+}
+
 /* Hidden print iframe — kept in the DOM, off-screen. */
 .printFrame {
   position: absolute;

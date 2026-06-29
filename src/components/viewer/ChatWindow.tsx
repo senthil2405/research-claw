@@ -26,6 +26,19 @@ interface ChatWindowProps {
   selectedText: string;
 }
 
+/** Context window size for the current model (Claude Opus 4.8 = 1 000 000). */
+const CTX_WINDOW = 1_000_000;
+
+function fmtK(n: number): string {
+  return n >= 1000 ? `${(n / 1000).toFixed(1)}K` : String(n);
+}
+
+function fmtDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  if (ms < 10_000) return `${(ms / 1000).toFixed(1)}s`;
+  return `${Math.round(ms / 1000)}s`;
+}
+
 /** Resize bounds. */
 const MIN_W = 280;
 const MIN_H = 240;
@@ -89,8 +102,19 @@ export default function ChatWindow({
   ]);
 
   const [draft, setDraft] = useState("");
+  // `resizing` = button-toggled mode (static glow + corner dots always visible).
+  // `edgeDragging` = live drag state (glow + dots for the duration of the drag).
+  // The border highlight shows when either is true.
   const [resizing, setResizing] = useState(false);
+  const [edgeDragging, setEdgeDragging] = useState(false);
+  const showResizeBorder = resizing || edgeDragging;
   const messagesRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Which window is topmost (highest z = last focused). The topmost window owns
+  // the Esc shortcut so only one window responds at a time.
+  const topZ = useChatStore((s) => s.topZ);
+  const isTop = win?.z === topZ && !win?.minimized;
 
   // Drag bookkeeping: pointer-to-window offset captured on pointerdown.
   const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
@@ -105,15 +129,28 @@ export default function ChatWindow({
     h: number;
   } | null>(null);
 
-  // Leave resize mode on Escape.
+  // Auto-focus the textarea when the window first opens so the user can type immediately.
   useEffect(() => {
-    if (!resizing) return;
+    const id = requestAnimationFrame(() => textareaRef.current?.focus());
+    return () => cancelAnimationFrame(id);
+  }, []); // empty deps → only on mount
+
+  // Esc: exit resize mode first; if not resizing, close the window.
+  // Only the topmost window responds, and only when the event isn't already
+  // handled by an input (e.defaultPrevented covers the page-number input case).
+  useEffect(() => {
+    if (!isTop) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") setResizing(false);
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (resizing) {
+        setResizing(false);
+      } else {
+        handleClose();
+      }
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [resizing]);
+  }, [isTop, resizing, handleClose]);
 
   // Auto-scroll to the newest message / typing indicator.
   useLayoutEffect(() => {
@@ -162,6 +199,7 @@ export default function ChatWindow({
       if (!win) return;
       e.stopPropagation();
       focusWindow(highlightId);
+      setEdgeDragging(true);
       resizeStart.current = {
         dir,
         px: e.clientX,
@@ -217,6 +255,7 @@ export default function ChatWindow({
   const onResizePointerUp = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       resizeStart.current = null;
+      setEdgeDragging(false);
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId);
       }
@@ -268,23 +307,21 @@ export default function ChatWindow({
     <section
       role="dialog"
       aria-label={"Chat about: " + title}
-      className={[styles.window, resizing ? styles.windowResizing : ""].join(" ")}
+      className={[styles.window, showResizeBorder ? styles.windowResizing : ""].join(" ")}
       style={windowStyle}
       onMouseDown={() => focusWindow(highlightId)}
     >
-      {resizing
-        ? RESIZE_HANDLES.map((dir) => (
-            <div
-              key={dir}
-              className={[styles.resizeHandle, styles["handle_" + dir]].join(" ")}
-              onPointerDown={(e) => onResizePointerDown(dir, e)}
-              onPointerMove={onResizePointerMove}
-              onPointerUp={onResizePointerUp}
-              onPointerCancel={onResizePointerUp}
-              aria-hidden="true"
-            />
-          ))
-        : null}
+      {RESIZE_HANDLES.map((dir) => (
+        <div
+          key={dir}
+          className={[styles.resizeHandle, styles["handle_" + dir]].join(" ")}
+          onPointerDown={(e) => onResizePointerDown(dir, e)}
+          onPointerMove={onResizePointerMove}
+          onPointerUp={onResizePointerUp}
+          onPointerCancel={onResizePointerUp}
+          aria-hidden="true"
+        />
+      ))}
 
       <div
         className={styles.header}
@@ -340,6 +377,7 @@ export default function ChatWindow({
             type="button"
             className={styles.iconButton}
             aria-label="Close chat window"
+            title="Close (Esc)"
             onClick={handleClose}
           >
             ×
@@ -390,6 +428,15 @@ export default function ChatWindow({
               >
                 {isUser ? msg.content : <Markdown content={msg.content} />}
               </div>
+              {!isUser && (msg.inputTokens != null || msg.durationMs != null) ? (
+                <span className={styles.tokenMeta}>
+                  {msg.inputTokens != null && msg.outputTokens != null
+                    ? `${fmtK(msg.inputTokens)} in · ${fmtK(msg.outputTokens)} out · ${((msg.inputTokens / CTX_WINDOW) * 100).toFixed(1)}% ctx`
+                    : null}
+                  {msg.inputTokens != null && msg.durationMs != null ? " · " : null}
+                  {msg.durationMs != null ? fmtDuration(msg.durationMs) : null}
+                </span>
+              ) : null}
             </div>
           );
         })}
@@ -412,6 +459,7 @@ export default function ChatWindow({
 
       <div className={styles.composer}>
         <textarea
+          ref={textareaRef}
           className={styles.textarea}
           value={draft}
           placeholder="Ask about this passage…"

@@ -90,9 +90,9 @@ describe("viewerStore", () => {
     const after = useViewerStore.getState();
     expect(after.numPages).toBe(0);
     expect(after.currentPage).toBe(1);
-    expect(after.scale).toBe(1);
+    expect(after.scale).toBe(0.8);
     expect(after.rotation).toBe(0);
-    expect(after.fitMode).toBe("width");
+    expect(after.fitMode).toBe("custom");
     expect(after.thumbsOpen).toBe(false);
     expect(after.scrollRequest).toBeNull();
   });

@@ -46,6 +46,15 @@
   text-overflow: ellipsis;
 }
 
+.docTitle {
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .meta {
   font-size: 11px;
   line-height: 1.2;
