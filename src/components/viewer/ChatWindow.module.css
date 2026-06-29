@@ -349,3 +349,45 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* ---- Panel (docked right-edge) mode ---- */
+.windowPanel {
+  /* flex item inside DocViewer's .body row */
+  flex: 0 0 auto;
+  position: relative; /* for the left resize handle */
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-strong);
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  overflow: hidden;
+}
+
+/* Panel: left-edge drag-to-resize handle */
+.resizeHandleLeft {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  z-index: 5;
+  touch-action: none;
+}
+
+/* Floating drag: snap-to-panel preview overlay */
+.snapPreview {
+  position: fixed;
+  right: 0;
+  top: var(--toolbar-height, 48px);
+  bottom: 0;
+  width: 380px;
+  background: var(--accent-soft);
+  opacity: 0.35;
+  pointer-events: none;
+  z-index: 9999;
+  border-left: 2px solid var(--accent);
+}

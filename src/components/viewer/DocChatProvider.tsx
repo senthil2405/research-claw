@@ -135,7 +135,7 @@ export function DocChatProvider({
     <DocChatContext.Provider value={value}>
       {children}
       <SelectionToolbar />
-      {windows.map((w) => {
+      {windows.filter((w) => w.mode !== "panel").map((w) => {
         const h = highlights.find((x) => x.id === w.highlightId);
         return (
           <ChatWindow

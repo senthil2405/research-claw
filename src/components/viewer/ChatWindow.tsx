@@ -11,7 +11,7 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { useChatStore } from "@/store/chatStore";
+import { useChatStore, DEFAULT_WINDOW_SIZE } from "@/store/chatStore";
 import { useDocChatOptional } from "@/components/viewer/DocChatContext";
 import { windowTopBoundary } from "@/components/viewer/placement";
 import { useChatMessages } from "@/hooks/useChatMessages";
@@ -42,17 +42,14 @@ function fmtDuration(ms: number): string {
 /** Resize bounds. */
 const MIN_W = 280;
 const MIN_H = 240;
+/** Pixels from right edge that trigger the snap-to-panel preview. */
+const SNAP_ZONE = 80;
+/** Pixels of leftward header drag that detaches a panel to floating. */
+const DETACH_THRESHOLD = 60;
 
 type ResizeDir = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 const RESIZE_HANDLES: ResizeDir[] = [
-  "n",
-  "s",
-  "e",
-  "w",
-  "ne",
-  "nw",
-  "se",
-  "sw",
+  "n", "s", "e", "w", "ne", "nw", "se", "sw",
 ];
 
 /** Truncate to `max` chars with an ellipsis. */
@@ -68,7 +65,6 @@ export default function ChatWindow({
   const ctx = useDocChatOptional();
   const documentId = ctx?.documentId ?? "";
 
-  // Window UI state from the chat store.
   const win = useChatStore((s) =>
     s.windows.find((w) => w.highlightId === highlightId),
   );
@@ -77,16 +73,13 @@ export default function ChatWindow({
   const focusWindow = useChatStore((s) => s.focusWindow);
   const moveWindow = useChatStore((s) => s.moveWindow);
   const setWindowRect = useChatStore((s) => s.setWindowRect);
+  const setWindowMode = useChatStore((s) => s.setWindowMode);
+  const setPanelWidth = useChatStore((s) => s.setPanelWidth);
 
   const { messages, isFetched } = useChatMessages(documentId, highlightId);
   const sendMutation = useSendChatMessage(documentId, highlightId);
   const deleteHighlight = useDeleteHighlight(documentId);
 
-  // Closing a window that never held a conversation should also remove its
-  // highlight from the PDF — an abandoned "Ask Claude" shouldn't leave a mark.
-  // Only delete once the messages query has settled empty (so reopening a
-  // highlight whose messages are still loading is never wrongly removed) and no
-  // send is in flight.
   const handleClose = useCallback(() => {
     if (isFetched && messages.length === 0 && !sendMutation.isPending) {
       deleteHighlight.mutate(highlightId);
@@ -102,23 +95,19 @@ export default function ChatWindow({
   ]);
 
   const [draft, setDraft] = useState("");
-  // `resizing` = button-toggled mode (static glow + corner dots always visible).
-  // `edgeDragging` = live drag state (glow + dots for the duration of the drag).
-  // The border highlight shows when either is true.
   const [resizing, setResizing] = useState(false);
   const [edgeDragging, setEdgeDragging] = useState(false);
+  const [showSnapPreview, setShowSnapPreview] = useState(false);
   const showResizeBorder = resizing || edgeDragging;
   const messagesRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Which window is topmost (highest z = last focused). The topmost window owns
-  // the Esc shortcut so only one window responds at a time.
   const topZ = useChatStore((s) => s.topZ);
   const isTop = win?.z === topZ && !win?.minimized;
 
-  // Drag bookkeeping: pointer-to-window offset captured on pointerdown.
+  // Floating drag: pointer-to-window offset captured on pointerdown.
   const dragOffset = useRef<{ dx: number; dy: number } | null>(null);
-  // Resize bookkeeping: pointer + window rect captured when a handle grab starts.
+  // Floating resize: start state captured on handle pointerdown.
   const resizeStart = useRef<{
     dir: ResizeDir;
     px: number;
@@ -128,16 +117,18 @@ export default function ChatWindow({
     w: number;
     h: number;
   } | null>(null);
+  // Panel drag: tracks initial x and whether detach already fired.
+  const panelDragRef = useRef<{ px: number; detached: boolean } | null>(null);
+  // Panel left-edge resize: start state.
+  const panelResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
-  // Auto-focus the textarea when the window first opens so the user can type immediately.
+  // Auto-focus the textarea when the window first opens.
   useEffect(() => {
     const id = requestAnimationFrame(() => textareaRef.current?.focus());
     return () => cancelAnimationFrame(id);
-  }, []); // empty deps → only on mount
+  }, []);
 
   // Esc: exit resize mode first; if not resizing, close the window.
-  // Only the topmost window responds, and only when the event isn't already
-  // handled by an input (e.defaultPrevented covers the page-number input case).
   useEffect(() => {
     if (!isTop) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
@@ -158,10 +149,11 @@ export default function ChatWindow({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages.length, sendMutation.isPending]);
 
+  // ---- Floating header drag ----
+
   const onHeaderPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (!win) return;
-      // Ignore drags that start on the header buttons.
       if ((e.target as HTMLElement).closest("button")) return;
       focusWindow(highlightId);
       dragOffset.current = { dx: e.clientX - win.x, dy: e.clientY - win.y };
@@ -180,6 +172,7 @@ export default function ChatWindow({
       const x = Math.min(Math.max(0, e.clientX - offset.dx), maxX);
       const y = Math.min(Math.max(minTop, e.clientY - offset.dy), maxY);
       moveWindow(highlightId, x, y);
+      setShowSnapPreview(e.clientX > window.innerWidth - SNAP_ZONE);
     },
     [moveWindow, highlightId, win],
   );
@@ -187,12 +180,18 @@ export default function ChatWindow({
   const onHeaderPointerUp = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       dragOffset.current = null;
+      setShowSnapPreview(false);
       if (e.currentTarget.hasPointerCapture(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId);
       }
+      if (e.clientX > window.innerWidth - SNAP_ZONE) {
+        setWindowMode(highlightId, "panel");
+      }
     },
-    [],
+    [setWindowMode, highlightId],
   );
+
+  // ---- Floating resize ----
 
   const onResizePointerDown = useCallback(
     (dir: ResizeDir, e: ReactPointerEvent<HTMLDivElement>) => {
@@ -224,26 +223,15 @@ export default function ChatWindow({
       const maxH = Math.round(vh * 0.9);
       const dx = e.clientX - start.px;
       const dy = e.clientY - start.py;
-
       let { x, y, w, h } = start;
-      if (start.dir.includes("e")) {
-        w = start.w + dx;
-      }
-      if (start.dir.includes("s")) {
-        h = start.h + dy;
-      }
-      if (start.dir.includes("w")) {
-        w = start.w - dx;
-      }
-      if (start.dir.includes("n")) {
-        h = start.h - dy;
-      }
-      // Clamp size, then keep the opposite edge anchored for n/w grabs.
+      if (start.dir.includes("e")) w = start.w + dx;
+      if (start.dir.includes("s")) h = start.h + dy;
+      if (start.dir.includes("w")) w = start.w - dx;
+      if (start.dir.includes("n")) h = start.h - dy;
       w = Math.min(Math.max(w, MIN_W), maxW);
       h = Math.min(Math.max(h, MIN_H), maxH);
       if (start.dir.includes("w")) x = start.x + (start.w - w);
       if (start.dir.includes("n")) y = start.y + (start.h - h);
-      // Keep within the viewport, and never let the top go behind the toolbar.
       const minTop = windowTopBoundary();
       x = Math.min(Math.max(0, x), Math.max(0, vw - w));
       y = Math.min(Math.max(minTop, y), Math.max(minTop, vh - h));
@@ -263,6 +251,78 @@ export default function ChatWindow({
     [],
   );
 
+  // ---- Panel header drag-to-detach ----
+
+  const onPanelHeaderPointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if ((e.target as HTMLElement).closest("button")) return;
+      panelDragRef.current = { px: e.clientX, detached: false };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [],
+  );
+
+  const onPanelHeaderPointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!panelDragRef.current || panelDragRef.current.detached) return;
+      const dx = e.clientX - panelDragRef.current.px;
+      if (dx < -DETACH_THRESHOLD) {
+        panelDragRef.current.detached = true;
+        const w = win?.width ?? DEFAULT_WINDOW_SIZE.width;
+        const floatX = Math.max(0, e.clientX - w / 2);
+        const floatY = Math.max(windowTopBoundary(), e.clientY - 20);
+        setWindowMode(highlightId, "floating", { x: floatX, y: floatY });
+        // Seed floating drag so pointermove continues seamlessly after re-render.
+        dragOffset.current = { dx: w / 2, dy: 20 };
+      }
+    },
+    [win, setWindowMode, highlightId],
+  );
+
+  const onPanelHeaderPointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      panelDragRef.current = null;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    },
+    [],
+  );
+
+  // ---- Panel left-edge resize ----
+
+  const onPanelResizePointerDown = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (!win) return;
+      e.stopPropagation();
+      panelResizeRef.current = { startX: e.clientX, startWidth: win.panelWidth };
+      e.currentTarget.setPointerCapture(e.pointerId);
+    },
+    [win],
+  );
+
+  const onPanelResizePointerMove = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      const start = panelResizeRef.current;
+      if (!start) return;
+      // Dragging left (smaller clientX) makes the panel wider.
+      setPanelWidth(highlightId, start.startWidth + (start.startX - e.clientX));
+    },
+    [setPanelWidth, highlightId],
+  );
+
+  const onPanelResizePointerUp = useCallback(
+    (e: ReactPointerEvent<HTMLDivElement>) => {
+      panelResizeRef.current = null;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    },
+    [],
+  );
+
+  // ---- Message send ----
+
   const handleSend = useCallback(() => {
     const question = draft.trim();
     if (!question || sendMutation.isPending) return;
@@ -280,13 +340,13 @@ export default function ChatWindow({
     [handleSend],
   );
 
+  // ---- Floating window style (null in panel mode) ----
+
   const windowStyle = useMemo<CSSProperties | null>(() => {
-    if (!win) return null;
+    if (!win || win.mode === "panel") return null;
     const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
     const vh = typeof window !== "undefined" ? window.innerHeight : 800;
     const minTop = windowTopBoundary();
-    // Keep the window within the viewport; the top never goes behind the PDF
-    // toolbar so the header (resize/minimize/close) is always reachable.
     const x = Math.min(Math.max(0, win.x), Math.max(0, vw - win.width));
     const y = Math.min(Math.max(minTop, win.y), Math.max(minTop, vh - 48));
     return {
@@ -298,93 +358,20 @@ export default function ChatWindow({
     };
   }, [win]);
 
-  // No context provider, no window, or minimized → render nothing.
-  if (!ctx || !win || win.minimized || !windowStyle) return null;
+  // ---- Early-return guards ----
+
+  if (!ctx || !win) return null;
+
+  const isPanel = win.mode === "panel";
+
+  if (!isPanel && (win.minimized || !windowStyle)) return null;
 
   const title = truncate(selectedText, 40);
 
-  return (
-    <section
-      role="dialog"
-      aria-label={"Chat about: " + title}
-      className={[styles.window, showResizeBorder ? styles.windowResizing : ""].join(" ")}
-      style={windowStyle}
-      onMouseDown={() => focusWindow(highlightId)}
-    >
-      {RESIZE_HANDLES.map((dir) => (
-        <div
-          key={dir}
-          className={[styles.resizeHandle, styles["handle_" + dir]].join(" ")}
-          onPointerDown={(e) => onResizePointerDown(dir, e)}
-          onPointerMove={onResizePointerMove}
-          onPointerUp={onResizePointerUp}
-          onPointerCancel={onResizePointerUp}
-          aria-hidden="true"
-        />
-      ))}
+  // ---- Shared body JSX (context chip + messages + composer) ----
 
-      <div
-        className={styles.header}
-        onPointerDown={onHeaderPointerDown}
-        onPointerMove={onHeaderPointerMove}
-        onPointerUp={onHeaderPointerUp}
-        onPointerCancel={onHeaderPointerUp}
-      >
-        <span className={styles.title} title={selectedText}>
-          {title ? "“" + title + "”" : "Chat"}
-        </span>
-        <div className={styles.headerButtons}>
-          <button
-            type="button"
-            className={[
-              styles.iconButton,
-              resizing ? styles.iconButtonActive : "",
-            ].join(" ")}
-            aria-label="Resize chat window"
-            aria-pressed={resizing}
-            title="Resize"
-            onClick={() => {
-              focusWindow(highlightId);
-              setResizing((v) => !v);
-            }}
-          >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M15 3h6v6" />
-              <path d="M9 21H3v-6" />
-              <path d="M21 3l-7 7" />
-              <path d="M3 21l7-7" />
-            </svg>
-          </button>
-          <button
-            type="button"
-            className={styles.iconButton}
-            aria-label="Minimize chat window"
-            onClick={() => minimizeWindow(highlightId)}
-          >
-            –
-          </button>
-          <button
-            type="button"
-            className={styles.iconButton}
-            aria-label="Close chat window"
-            title="Close (Esc)"
-            onClick={handleClose}
-          >
-            ×
-          </button>
-        </div>
-      </div>
-
+  const bodyContent = (
+    <>
       {selectedText ? (
         <div className={styles.context} title={selectedText}>
           {"“" + truncate(selectedText, 240) + "”"}
@@ -478,6 +465,155 @@ export default function ChatWindow({
           ↑
         </button>
       </div>
-    </section>
+    </>
+  );
+
+  // ---- Panel mode ----
+
+  if (isPanel) {
+    return (
+      <section
+        role="dialog"
+        aria-label={"Chat about: " + title}
+        className={styles.windowPanel}
+        style={{ width: win.panelWidth }}
+      >
+        <div
+          className={styles.resizeHandleLeft}
+          onPointerDown={onPanelResizePointerDown}
+          onPointerMove={onPanelResizePointerMove}
+          onPointerUp={onPanelResizePointerUp}
+          onPointerCancel={onPanelResizePointerUp}
+          aria-hidden="true"
+        />
+
+        <div
+          className={styles.header}
+          onPointerDown={onPanelHeaderPointerDown}
+          onPointerMove={onPanelHeaderPointerMove}
+          onPointerUp={onPanelHeaderPointerUp}
+          onPointerCancel={onPanelHeaderPointerUp}
+        >
+          <span className={styles.title} title={selectedText}>
+            {title ? "“" + title + "”" : "Chat"}
+          </span>
+          <div className={styles.headerButtons}>
+            <button
+              type="button"
+              className={styles.iconButton}
+              aria-label="Minimize chat window"
+              title="Detach to floating window"
+              onClick={() => minimizeWindow(highlightId)}
+            >
+              –
+            </button>
+            <button
+              type="button"
+              className={styles.iconButton}
+              aria-label="Close chat window"
+              title="Close (Esc)"
+              onClick={handleClose}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {bodyContent}
+      </section>
+    );
+  }
+
+  // ---- Floating mode ----
+
+  return (
+    <>
+      {showSnapPreview && (
+        <div className={styles.snapPreview} aria-hidden="true" />
+      )}
+      <section
+        role="dialog"
+        aria-label={"Chat about: " + title}
+        className={[
+          styles.window,
+          showResizeBorder ? styles.windowResizing : "",
+        ].join(" ")}
+        style={windowStyle!}
+        onMouseDown={() => focusWindow(highlightId)}
+      >
+        {RESIZE_HANDLES.map((dir) => (
+          <div
+            key={dir}
+            className={[styles.resizeHandle, styles["handle_" + dir]].join(" ")}
+            onPointerDown={(e) => onResizePointerDown(dir, e)}
+            onPointerMove={onResizePointerMove}
+            onPointerUp={onResizePointerUp}
+            onPointerCancel={onResizePointerUp}
+            aria-hidden="true"
+          />
+        ))}
+
+        <div
+          className={styles.header}
+          onPointerDown={onHeaderPointerDown}
+          onPointerMove={onHeaderPointerMove}
+          onPointerUp={onHeaderPointerUp}
+          onPointerCancel={onHeaderPointerUp}
+        >
+          <span className={styles.title} title={selectedText}>
+            {title ? "“" + title + "”" : "Chat"}
+          </span>
+          <div className={styles.headerButtons}>
+            {/* Expand floating window to panel */}
+            <button
+              type="button"
+              className={styles.iconButton}
+              aria-label="Expand to panel"
+              title="Dock as panel"
+              onClick={() => {
+                focusWindow(highlightId);
+                setWindowMode(highlightId, "panel");
+              }}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M15 3h6v6" />
+                <path d="M9 21H3v-6" />
+                <path d="M21 3l-7 7" />
+                <path d="M3 21l7-7" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className={styles.iconButton}
+              aria-label="Minimize chat window"
+              onClick={() => minimizeWindow(highlightId)}
+            >
+              –
+            </button>
+            <button
+              type="button"
+              className={styles.iconButton}
+              aria-label="Close chat window"
+              title="Close (Esc)"
+              onClick={handleClose}
+            >
+              ×
+            </button>
+          </div>
+        </div>
+
+        {bodyContent}
+      </section>
+    </>
   );
 }

@@ -17,18 +17,26 @@ export interface ActiveSelection {
 /** UI state for one open chat window (the persisted data lives server-side). */
 export interface OpenWindow {
   highlightId: string;
+  /** Whether the window is docked as a full-height right panel or floating. */
+  mode: "panel" | "floating";
+  // Floating geometry (only meaningful in floating mode).
   x: number;
   y: number;
-  /** Window size in px (resizable). */
+  /** Floating window size in px (resizable). */
   width: number;
   height: number;
+  /** Panel width in px (adjustable via left-edge drag). */
+  panelWidth: number;
+  /** Only meaningful in floating mode — hides the window and shows a chip. */
   minimized: boolean;
-  /** Stacking order; higher = on top. */
+  /** Stacking order; higher = on top (floating only). */
   z: number;
 }
 
-/** Default chat window size. */
+/** Default chat window size (floating). */
 export const DEFAULT_WINDOW_SIZE = { width: 360, height: 460 };
+/** Default panel width when docked to the right edge. */
+export const DEFAULT_PANEL_WIDTH = 380;
 
 export interface ChatState {
   activeSelection: ActiveSelection | null;
@@ -37,23 +45,37 @@ export interface ChatState {
   topZ: number;
 
   setSelection: (sel: ActiveSelection | null) => void;
-  /** Open (or focus/un-minimize) a window for a highlight. */
+  /** Open (or focus/un-minimize) a window for a highlight. New windows default to panel mode. */
   openWindow: (highlightId: string, pos?: { x: number; y: number }) => void;
   closeWindow: (highlightId: string) => void;
+  /**
+   * For panel windows: converts to floating (detaches). For floating windows:
+   * hides + shows a chip (existing behavior).
+   */
   minimizeWindow: (highlightId: string) => void;
   focusWindow: (highlightId: string) => void;
   moveWindow: (highlightId: string, x: number, y: number) => void;
-  /** Update any of a window's geometry (used by resize). */
+  /** Update any of a floating window's geometry (used by resize). */
   setWindowRect: (
     highlightId: string,
     rect: Partial<{ x: number; y: number; width: number; height: number }>,
   ) => void;
+  /** Switch a window between panel and floating mode. */
+  setWindowMode: (
+    highlightId: string,
+    mode: "panel" | "floating",
+    pos?: { x: number; y: number },
+  ) => void;
+  /** Resize the right panel (used by left-edge drag). */
+  setPanelWidth: (highlightId: string, width: number) => void;
   setHovered: (highlightId: string | null) => void;
   /** Reset all chat UI state (call on document change). */
   reset: () => void;
 }
 
 const DEFAULT_POS = { x: 120, y: 120 };
+const MIN_PANEL_WIDTH = 280;
+const MAX_PANEL_WIDTH = 900;
 
 export const useChatStore = create<ChatState>((set, get) => ({
   activeSelection: null,
@@ -68,6 +90,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const z = s.topZ + 1;
       const existing = s.windows.find((w) => w.highlightId === highlightId);
       if (existing) {
+        // Un-minimize and focus; keep existing mode.
         return {
           topZ: z,
           windows: s.windows.map((w) =>
@@ -75,18 +98,31 @@ export const useChatStore = create<ChatState>((set, get) => ({
           ),
         };
       }
-      // Cascade new windows so they don't perfectly overlap.
-      const offset = s.windows.length * 28;
+      // New window: default to panel mode.
+      // Enforce single-panel invariant — convert any existing panel to floating.
+      const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+      const updated = s.windows.map((w) =>
+        w.mode === "panel"
+          ? {
+              ...w,
+              mode: "floating" as const,
+              x: Math.max(0, vw - (w.panelWidth + 40)),
+              y: 120,
+            }
+          : w,
+      );
       return {
         topZ: z,
         windows: [
-          ...s.windows,
+          ...updated,
           {
             highlightId,
-            x: (pos?.x ?? DEFAULT_POS.x) + offset,
-            y: (pos?.y ?? DEFAULT_POS.y) + offset,
+            mode: "panel",
+            x: pos?.x ?? DEFAULT_POS.x,
+            y: pos?.y ?? DEFAULT_POS.y,
             width: DEFAULT_WINDOW_SIZE.width,
             height: DEFAULT_WINDOW_SIZE.height,
+            panelWidth: DEFAULT_PANEL_WIDTH,
             minimized: false,
             z,
           },
@@ -100,11 +136,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
     })),
 
   minimizeWindow: (highlightId) =>
-    set((s) => ({
-      windows: s.windows.map((w) =>
-        w.highlightId === highlightId ? { ...w, minimized: true } : w,
-      ),
-    })),
+    set((s) => {
+      const win = s.windows.find((w) => w.highlightId === highlightId);
+      if (!win) return s;
+      if (win.mode === "panel") {
+        // Panel minimize = convert to floating near the right edge.
+        const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+        return {
+          windows: s.windows.map((w) =>
+            w.highlightId === highlightId
+              ? {
+                  ...w,
+                  mode: "floating" as const,
+                  x: Math.max(0, vw - (w.width + 40)),
+                  y: 120,
+                  minimized: false,
+                }
+              : w,
+          ),
+        };
+      }
+      // Floating minimize = hide (chip on highlight).
+      return {
+        windows: s.windows.map((w) =>
+          w.highlightId === highlightId ? { ...w, minimized: true } : w,
+        ),
+      };
+    }),
 
   focusWindow: (highlightId) => {
     const z = get().topZ + 1;
@@ -120,6 +178,67 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((s) => ({
       windows: s.windows.map((w) =>
         w.highlightId === highlightId ? { ...w, ...rect } : w,
+      ),
+    })),
+
+  setWindowMode: (highlightId, mode, pos) =>
+    set((s) => {
+      const z = s.topZ + 1;
+      if (mode === "panel") {
+        // Convert to panel: enforce single-panel invariant first.
+        const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+        const updated = s.windows.map((w) => {
+          if (w.highlightId === highlightId) return w;
+          if (w.mode === "panel")
+            return {
+              ...w,
+              mode: "floating" as const,
+              x: Math.max(0, vw - (w.panelWidth + 40)),
+              y: 120,
+            };
+          return w;
+        });
+        return {
+          topZ: z,
+          windows: updated.map((w) =>
+            w.highlightId === highlightId
+              ? { ...w, mode: "panel" as const, minimized: false, z }
+              : w,
+          ),
+        };
+      }
+      // Convert to floating.
+      const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
+      const target = s.windows.find((w) => w.highlightId === highlightId);
+      const floatX =
+        pos?.x ?? (target ? Math.max(0, vw - target.width - 40) : DEFAULT_POS.x);
+      const floatY = pos?.y ?? 120;
+      return {
+        topZ: z,
+        windows: s.windows.map((w) =>
+          w.highlightId === highlightId
+            ? {
+                ...w,
+                mode: "floating" as const,
+                x: floatX,
+                y: floatY,
+                minimized: false,
+                z,
+              }
+            : w,
+        ),
+      };
+    }),
+
+  setPanelWidth: (highlightId, width) =>
+    set((s) => ({
+      windows: s.windows.map((w) =>
+        w.highlightId === highlightId
+          ? {
+              ...w,
+              panelWidth: Math.min(MAX_PANEL_WIDTH, Math.max(MIN_PANEL_WIDTH, width)),
+            }
+          : w,
       ),
     })),
 

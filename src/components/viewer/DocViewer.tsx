@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type RefObject } from "react";
 import dynamic from "next/dynamic";
 import PdfToolbar from "./PdfToolbar";
 import { ChatHistoryPanel } from "./ChatHistoryPanel";
@@ -8,6 +8,8 @@ import { DocChatProvider } from "./DocChatProvider";
 import { useViewerStore } from "@/store/viewerStore";
 import { useChatStore } from "@/store/chatStore";
 import { useUiStore } from "@/store/uiStore";
+import { useDocChatOptional } from "./DocChatContext";
+import ChatWindow from "./ChatWindow";
 import styles from "./DocViewer.module.css";
 
 const SCALE_MIN = 0.25;
@@ -35,6 +37,49 @@ export interface DocViewerProps {
   documentId: string;
   /** Optional display name shown in the toolbar. */
   filename?: string;
+}
+
+/**
+ * Inner component rendered inside DocChatProvider so it can read the chat
+ * context to pass highlight text to the panel window.
+ */
+function DocViewerBody({
+  src,
+  filename,
+  stageRef,
+}: {
+  src: string;
+  filename?: string;
+  stageRef: RefObject<HTMLDivElement | null>;
+}) {
+  const ctx = useDocChatOptional();
+  const panelWindow = useChatStore((s) =>
+    s.windows.find((w) => w.mode === "panel"),
+  );
+  const panelHighlight = panelWindow
+    ? ctx?.highlights.find((h) => h.id === panelWindow.highlightId)
+    : null;
+
+  return (
+    <>
+      <PdfToolbar src={src} filename={filename} />
+      <div className={styles.body}>
+        {/* ChatHistoryPanel moves to the LEFT side */}
+        <ChatHistoryPanel />
+        <ThumbnailRail src={src} />
+        <div className={styles.viewer} ref={stageRef}>
+          <PdfViewer src={src} />
+        </div>
+        {/* Panel ChatWindow anchored to the RIGHT edge */}
+        {panelWindow && (
+          <ChatWindow
+            highlightId={panelWindow.highlightId}
+            selectedText={panelHighlight?.selectedText ?? ""}
+          />
+        )}
+      </div>
+    </>
+  );
 }
 
 /**
@@ -94,14 +139,7 @@ export function DocViewer({ src, documentId, filename }: DocViewerProps) {
   return (
     <DocChatProvider documentId={documentId} stageRef={viewerRef}>
       <div className={styles.root}>
-        <PdfToolbar src={src} filename={filename} />
-        <div className={styles.body}>
-          <ThumbnailRail src={src} />
-          <div className={styles.viewer} ref={viewerRef}>
-            <PdfViewer src={src} />
-          </div>
-          <ChatHistoryPanel />
-        </div>
+        <DocViewerBody src={src} filename={filename} stageRef={viewerRef} />
       </div>
     </DocChatProvider>
   );

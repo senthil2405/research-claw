@@ -94,8 +94,13 @@ test("chat flow: select -> ask -> minimize -> reopen -> persist", async ({
     timeout: 20_000,
   });
 
-  // ---- 5. Minimize -> dialog hides, chip appears -> reopen ----
+  // ---- 5. Minimize -> panel detaches to floating, minimize again -> chip ----
+  // First click: panel → floating (dialog still visible as a floating window).
   await dialog.getByRole("button", { name: "Minimize chat window" }).click();
+  const floating = page.getByRole("dialog");
+  await expect(floating).toBeVisible({ timeout: 5_000 });
+  // Second click: floating → minimized (hidden), chip appears.
+  await floating.getByRole("button", { name: "Minimize chat window" }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
   const chip = page.getByRole("button", {

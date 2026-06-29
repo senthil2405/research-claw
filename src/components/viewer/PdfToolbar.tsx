@@ -180,17 +180,24 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
       aria-label="PDF controls"
       data-pdf-toolbar
     >
-      {/* 1. Thumbnails / sidebar toggle */}
-      <button
-        type="button"
-        className={`${styles.iconButton} ${thumbsOpen ? styles.active : ""}`}
-        aria-label="Toggle thumbnails"
-        aria-pressed={thumbsOpen}
-        title="Thumbnails"
-        onClick={toggleThumbs}
-      >
-        <ThumbnailsIcon />
-      </button>
+      {/* 1. Chat history panel toggle (left) */}
+      <div className={styles.chatPanelWrap}>
+        <button
+          type="button"
+          className={`${styles.iconButton} ${chatsPanelOpen ? styles.active : ""}`}
+          aria-label="Toggle chat history"
+          aria-pressed={chatsPanelOpen}
+          title="Chats in this PDF (⌘/ / Ctrl+/)"
+          onClick={toggleChatsPanel}
+        >
+          <ChatPanelIcon />
+        </button>
+        {chatCount > 0 && (
+          <span className={styles.chatBadge} aria-label={`${chatCount} chats`}>
+            {chatCount > 99 ? "99+" : chatCount}
+          </span>
+        )}
+      </div>
 
       <span className={styles.divider} aria-hidden="true" />
 
@@ -334,24 +341,19 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
         {darkMode ? <SunIcon /> : <MoonIcon />}
       </button>
 
-      {/* 11. Chat history panel toggle (right) */}
-      <div className={styles.chatPanelWrap}>
-        <button
-          type="button"
-          className={`${styles.iconButton} ${chatsPanelOpen ? styles.active : ""}`}
-          aria-label="Toggle chat history"
-          aria-pressed={chatsPanelOpen}
-          title="Chats in this PDF (⌘/ / Ctrl+/)"
-          onClick={toggleChatsPanel}
-        >
-          <ChatPanelIcon />
-        </button>
-        {chatCount > 0 && (
-          <span className={styles.chatBadge} aria-label={`${chatCount} chats`}>
-            {chatCount > 99 ? "99+" : chatCount}
-          </span>
-        )}
-      </div>
+      <span className={styles.divider} aria-hidden="true" />
+
+      {/* 11. Thumbnails / sidebar toggle (right) */}
+      <button
+        type="button"
+        className={`${styles.iconButton} ${thumbsOpen ? styles.active : ""}`}
+        aria-label="Toggle thumbnails"
+        aria-pressed={thumbsOpen}
+        title="Thumbnails"
+        onClick={toggleThumbs}
+      >
+        <ThumbnailsIcon />
+      </button>
 
       {/* Hidden iframe used for printing. */}
       <iframe

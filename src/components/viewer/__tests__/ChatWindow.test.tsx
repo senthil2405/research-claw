@@ -129,7 +129,19 @@ describe("ChatWindow", () => {
     expect(mockMutate).not.toHaveBeenCalled();
   });
 
-  it("minimize hides the window (store-driven) ", () => {
+  it("minimize on panel window converts it to floating (store-driven)", () => {
+    // openWindow now defaults to panel mode.
+    expect(useChatStore.getState().windows.find((w) => w.highlightId === HID)?.mode).toBe("panel");
+    renderWindow();
+    fireEvent.click(screen.getByLabelText("Minimize chat window"));
+    const win = useChatStore.getState().windows.find((w) => w.highlightId === HID);
+    expect(win?.mode).toBe("floating");
+    expect(win?.minimized).toBe(false);
+  });
+
+  it("minimize on floating window hides it (store-driven)", () => {
+    // Convert to floating first so minimize → hidden.
+    useChatStore.getState().setWindowMode(HID, "floating");
     renderWindow();
     fireEvent.click(screen.getByLabelText("Minimize chat window"));
     expect(

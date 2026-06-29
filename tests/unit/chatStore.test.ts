@@ -41,23 +41,30 @@ describe("chatStore", () => {
     expect(store().topZ).toBe(2);
   });
 
-  it("openWindow honors an explicit position", () => {
+  it("openWindow honors an explicit position (stored, used when floating)", () => {
     store().openWindow("h1", { x: 300, y: 400 });
     expect(store().windows[0]).toMatchObject({ x: 300, y: 400 });
   });
 
-  it("cascades new windows by 28px per existing window", () => {
-    store().openWindow("h1", { x: 100, y: 100 });
-    store().openWindow("h2", { x: 100, y: 100 });
-    store().openWindow("h3", { x: 100, y: 100 });
-    const [a, b, c] = store().windows;
-    expect(a).toMatchObject({ x: 100, y: 100 }); // offset 0
-    expect(b).toMatchObject({ x: 128, y: 128 }); // offset 28
-    expect(c).toMatchObject({ x: 156, y: 156 }); // offset 56
+  it("openWindow defaults to panel mode", () => {
+    store().openWindow("h1");
+    expect(store().windows[0].mode).toBe("panel");
+    expect(store().windows[0].panelWidth).toBe(380);
+  });
+
+  it("openWindow enforces single-panel invariant: previous panel converts to floating", () => {
+    store().openWindow("h1");
+    expect(store().windows[0].mode).toBe("panel");
+    store().openWindow("h2");
+    expect(store().windows).toHaveLength(2);
+    expect(store().windows.find((w) => w.highlightId === "h1")?.mode).toBe("floating");
+    expect(store().windows.find((w) => w.highlightId === "h2")?.mode).toBe("panel");
   });
 
   it("openWindow on an existing id focuses + un-minimizes it instead of duplicating", () => {
     store().openWindow("h1");
+    // Convert to floating and minimize to test un-minimize behavior.
+    store().setWindowMode("h1", "floating");
     store().minimizeWindow("h1");
     expect(store().windows[0].minimized).toBe(true);
     const zBefore = store().windows[0].z;
@@ -80,8 +87,18 @@ describe("chatStore", () => {
     );
   });
 
-  it("minimizeWindow sets minimized true without removing the window", () => {
+  it("minimizeWindow on panel converts it to floating (not hidden)", () => {
     store().openWindow("h1");
+    expect(store().windows[0].mode).toBe("panel");
+    store().minimizeWindow("h1");
+    expect(store().windows).toHaveLength(1);
+    expect(store().windows[0].mode).toBe("floating");
+    expect(store().windows[0].minimized).toBe(false);
+  });
+
+  it("minimizeWindow on floating sets minimized true without removing the window", () => {
+    store().openWindow("h1");
+    store().setWindowMode("h1", "floating");
     store().minimizeWindow("h1");
     expect(store().windows).toHaveLength(1);
     expect(store().windows[0].minimized).toBe(true);
@@ -96,16 +113,17 @@ describe("chatStore", () => {
 
   it("moveWindow updates position of the targeted window only", () => {
     store().openWindow("h1", { x: 0, y: 0 });
+    // Opening h2 converts h1 to floating and creates h2 as panel.
     store().openWindow("h2", { x: 0, y: 0 });
     store().moveWindow("h1", 500, 600);
     expect(store().windows.find((w) => w.highlightId === "h1")).toMatchObject({
       x: 500,
       y: 600,
     });
-    // h2 unchanged (apart from its own cascade offset of 28).
+    // h2 unchanged (no cascade in panel mode).
     expect(store().windows.find((w) => w.highlightId === "h2")).toMatchObject({
-      x: 28,
-      y: 28,
+      x: 0,
+      y: 0,
     });
   });
 
