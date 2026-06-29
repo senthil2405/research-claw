@@ -352,14 +352,12 @@
 
 /* ---- Panel (docked right-edge) mode ---- */
 .windowPanel {
-  /* Overlays the body — does NOT affect viewer width, so PDF never reflows. */
-  position: absolute;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  z-index: 10;
+  /* flex item inside DocViewer's .body row */
+  flex: 0 0 auto;
+  position: relative; /* for the left resize handle */
   display: flex;
   flex-direction: column;
+  height: 100%;
   min-height: 0;
   background: var(--bg-surface);
   border-left: 1px solid var(--border-strong);

@@ -88,6 +88,10 @@ export function PdfViewer({ src }: PdfViewerProps) {
   // Debounce timer for container-resize events (sidebar slide animation fires
   // a ResizeObserver callback on every rAF; batching prevents per-frame renders).
   const containerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Previous estimated slot height — used to restore scroll position proportionally
+  // when renderWidth changes (panel open/close, sidebar collapse) so the same
+  // page stays in view even though raw pixel heights changed.
+  const prevEstimatedSlotRef = useRef(0);
 
   // Memoize the file so react-pdf's `===` change-detection stays stable across
   // re-renders that don't actually change `src`.
@@ -241,8 +245,23 @@ export function PdfViewer({ src }: PdfViewerProps) {
 
   // When the render width or rotation changes, previously measured page heights
   // are stale — drop the measurement cache so the virtualizer re-estimates.
+  // Also restore scrollTop proportionally so the same page stays in view:
+  //   newScrollTop = oldScrollTop × (newSlot / oldSlot)
+  // This keeps the visible page stable when a panel opens/closes or the sidebar
+  // collapses, even though the physical pixel heights of all pages change.
   useEffect(() => {
-    virtualizer.measure();
+    const stage = stageRef.current;
+    const prevSlot = prevEstimatedSlotRef.current;
+    const newSlot = Math.max(1, Math.round(estimatedPageHeight + GAP));
+    prevEstimatedSlotRef.current = newSlot;
+
+    if (stage && numPages > 0 && prevSlot > 0 && prevSlot !== newSlot) {
+      const savedTop = stage.scrollTop;
+      virtualizer.measure();
+      stage.scrollTop = Math.round(savedTop * (newSlot / prevSlot));
+    } else {
+      virtualizer.measure();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [renderWidth, rotation]);
 
