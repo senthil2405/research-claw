@@ -7,6 +7,78 @@ Each entry documents what changed, why, how it was built, and what tests gate it
 
 ## [Unreleased] — 2026-07-01
 
+### Performance: Faster model + streamed replies (beta-ready chat)
+
+Chat responses were taking ~20s to appear as a single block. Investigation of the
+stored `durationMs`/token data showed throughput was a steady ~60–65 tok/s and
+CLI process overhead was only ~1–3s — i.e. the wait was almost entirely the model
+generating a long answer. Two changes address the perceived latency.
+
+**1. Default model switched Claude Opus 4.8 → Claude Sonnet 4.6**
+
+| File | Change |
+|---|---|
+| `src/server/claudeCli.ts` | `MODEL` default `claude-opus-4-8` → `claude-sonnet-4-6` (still overridable via `CLAUDE_MODEL`) |
+
+Sonnet generates ~3× faster at comparable quality for paper Q&A.
+
+**2. Token-by-token streaming through the Claude Code CLI**
+
+The reply now streams in as it is generated instead of appearing all at once.
+
+| File | Change |
+|---|---|
+| `src/server/claudeCli.ts` | Added `streamCliChat()` — spawns `claude -p --output-format stream-json --include-partial-messages --verbose`, parses the NDJSON line-buffered, and invokes `onToken` on each `content_block_delta`/`text_delta`; returns full text + usage + session id from the final `result` event. Extracted shared `sessionArgs()`/`authEnv()` helpers |
+| `src/server/claude.ts` | Added `runClaudeTurnStreaming()` mirroring `runClaudeTurn` (incl. resume→fresh-session fallback); mock mode emits the canned reply in one chunk |
+| `src/server/services/chat.ts` | Added `streamMessage()` — **structurally identical to the proven `sendMessage`** (relies on `--resume` for history, so DB writes + FK relationships are unchanged); only the turn call differs |
+| `src/app/api/documents/[id]/chat/stream/route.ts` | New SSE endpoint emitting `delta`/`done`/`error` events |
+| `src/api/chat.ts` | Added `streamChatMessage()` async generator that reads the SSE stream |
+| `src/hooks/useStreamChatMessage.ts` | New hook: optimistic user bubble + synchronous double-submit guard + a **typewriter** that reveals buffered text at ~90 chars/sec (with gentle catch-up) so multi-word CLI chunks read as smooth character flow rather than paste-jumps |
+| `src/lib/types.ts` | Added `ChatStreamEvent` union |
+| `src/components/viewer/ChatWindow.tsx` | Uses the streaming hook; renders the in-progress reply as it arrives |
+
+**Why not the Anthropic SDK:** an earlier attempt streamed via `@anthropic-ai/sdk`,
+which only applies to API-key auth — it never engaged in the CLI/account mode this
+app runs on, and its history-reconstruction path caused a follow-up FK error. The
+CLI approach streams in the mode users are actually on, and reuses the known-good
+persistence path.
+
+**Validation:** the NDJSON parser was verified against real CLI output with
+arbitrary chunk boundaries (reassembled text matches the authoritative `result`
+byte-for-byte).
+
+### UX: Streaming does not move the viewport
+
+The chat viewport now stays put while a reply streams — text fills in below and the
+user scrolls at their own pace. Two deliberate scrolls remain, neither tied to
+streaming: opening a chat scrolls to its latest message, and sending scrolls once
+to reveal the just-sent question.
+
+| File | Change |
+|---|---|
+| `src/components/viewer/ChatWindow.tsx` | Removed the streaming auto-scroll / stick-to-bottom logic; added a one-time initial scroll on load and a one-time scroll on send |
+
+### Bug fix: PDF page no longer drifts on sidebar/panel resize
+
+Toggling the left sidebar (or opening/closing the chat panel) changes the viewer
+width, which reflows page heights. The old proportional `scrollTop` restore drifted
+across un-rendered (estimated-height) pages and could land several pages off; a
+later page-anchor attempt over-corrected on zoom.
+
+| File | Change |
+|---|---|
+| `src/components/viewer/PdfViewer.tsx` | Split the two cases: a **layout reflow** (container width or rotation change) re-anchors to the page the user was viewing — captured live from real scroll position via an `onScroll` handler and restored with the same DOM-snap the go-to-page feature uses; a **zoom** (renderWidth changes but container width doesn't) falls through to a plain re-measure and stays free-form. A `suspendAnchorCapture` guard prevents reflow-induced scroll events from corrupting the anchor mid-restore |
+
+Net result: clicking a chat jumps to its page; zoom is free-form; toggling the
+sidebar keeps the current page in view.
+
+**Sanity tests (all of the above)**
+
+- TypeScript: `npx tsc --noEmit` — clean
+- Lint: 0 errors
+- Unit: `npx vitest run` — 23 files, 155 tests, all pass
+- E2E: `npx playwright test` — 10/10 pass
+
 ### Feature: Delete chat from sidebar
 
 A single **Delete chat** button at the bottom of the ChatHistoryPanel lets users remove the selected chat. The button is disabled when no chat is selected (`panelHighlightId` is null) and enabled immediately on selection. Clicking it closes the chat window and deletes the highlight from the server.

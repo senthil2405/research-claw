@@ -10,7 +10,7 @@ import path from "node:path";
 // the "start" and "submit code" requests (single-instance only).
 
 const CLAUDE_BIN = process.env.CLAUDE_CLI_PATH || "claude";
-const MODEL = process.env.CLAUDE_MODEL || "claude-opus-4-8";
+const MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-4-6";
 const AUTH_ROOT = process.env.CLAUDE_AUTH_DIR || "./storage/claude-auth";
 
 /** Per-user Claude config dir (holds that user's logged-in session). */
@@ -255,29 +255,157 @@ export interface CliChatResult {
   durationMs: number | null;
 }
 
-/** Run one chat turn through `claude -p`, returning the reply + session id. */
-export async function runCliChat(input: CliChatInput): Promise<CliChatResult> {
-  const args = ["-p", "--output-format", "json", "--model", MODEL];
+/** Build the session/system-prompt args shared by both chat entry points. */
+function sessionArgs(input: CliChatInput): string[] {
   if (input.resumeSessionId) {
-    // Resuming: history already holds the system prompt + PDF from turn 1.
-    args.push("--resume", input.resumeSessionId);
-  } else {
-    // New session: inject the system prompt (which carries the full PDF text).
-    args.push(
-      "--append-system-prompt",
-      input.systemPrompt,
-      "--session-id",
-      input.newSessionId,
-    );
+    // Resuming: history already holds the system prompt from turn 1.
+    return ["--resume", input.resumeSessionId];
   }
+  // New session: inject the system prompt and pin a fresh session id.
+  return [
+    "--append-system-prompt",
+    input.systemPrompt,
+    "--session-id",
+    input.newSessionId,
+  ];
+}
 
+/** Build the child-process env carrying the caller's auth. */
+function authEnv(auth: CliChatInput["auth"]): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env };
-  if ("configDir" in input.auth) {
-    env.CLAUDE_CONFIG_DIR = input.auth.configDir;
+  if ("configDir" in auth) {
+    env.CLAUDE_CONFIG_DIR = auth.configDir;
     delete env.ANTHROPIC_API_KEY;
   } else {
-    env.ANTHROPIC_API_KEY = input.auth.apiKey;
+    env.ANTHROPIC_API_KEY = auth.apiKey;
   }
+  return env;
+}
+
+/**
+ * Stream one chat turn through `claude -p --output-format stream-json`, calling
+ * `onToken` for each text delta as it arrives. Resolves with the full reply +
+ * usage once the process finishes. Mirrors runCliChat's contract otherwise.
+ */
+export async function streamCliChat(
+  input: CliChatInput,
+  onToken: (delta: string) => void,
+): Promise<CliChatResult> {
+  const args = [
+    "-p",
+    "--output-format",
+    "stream-json",
+    "--include-partial-messages",
+    "--verbose",
+    "--model",
+    MODEL,
+    ...sessionArgs(input),
+  ];
+  const env = authEnv(input.auth);
+  const startMs = Date.now();
+
+  return new Promise<CliChatResult>((resolve, reject) => {
+    const child = spawn(CLAUDE_BIN, args, { env });
+    let err = "";
+    let lineBuf = "";
+    let streamed = "";
+    // Filled from the terminal `result` event.
+    let resultText: string | null = null;
+    let sessionId: string | null = null;
+    let inputTokens: number | null = null;
+    let outputTokens: number | null = null;
+    let durationMs: number | null = null;
+
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        /* ignore */
+      }
+      reject(new Error("Claude timed out"));
+    }, 180_000);
+
+    const handleEvent = (o: Record<string, unknown>) => {
+      const type = o.type;
+      if (type === "stream_event") {
+        const ev = o.event as
+          | { type?: string; delta?: { type?: string; text?: string } }
+          | undefined;
+        if (
+          ev?.type === "content_block_delta" &&
+          ev.delta?.type === "text_delta" &&
+          typeof ev.delta.text === "string"
+        ) {
+          streamed += ev.delta.text;
+          onToken(ev.delta.text);
+        }
+      } else if (type === "result") {
+        resultText =
+          typeof o.result === "string" ? o.result : null;
+        sessionId = (o.session_id as string) ?? null;
+        const usage = o.usage as
+          | { input_tokens?: number; output_tokens?: number }
+          | undefined;
+        inputTokens = usage?.input_tokens ?? null;
+        outputTokens = usage?.output_tokens ?? null;
+        durationMs = (o.duration_ms as number) ?? null;
+      }
+    };
+
+    child.stdout.on("data", (c) => {
+      lineBuf += c.toString();
+      let nl: number;
+      while ((nl = lineBuf.indexOf("\n")) !== -1) {
+        const line = lineBuf.slice(0, nl).trim();
+        lineBuf = lineBuf.slice(nl + 1);
+        if (!line) continue;
+        try {
+          handleEvent(JSON.parse(line) as Record<string, unknown>);
+        } catch {
+          /* ignore non-JSON noise lines */
+        }
+      }
+    });
+    child.stderr.on("data", (c) => (err += c.toString()));
+    child.stdin.write(input.userMessage);
+    child.stdin.end();
+    child.on("error", (e) => {
+      clearTimeout(timer);
+      reject(e);
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      if (code !== 0) {
+        reject(new Error(err.trim() || `claude exited with code ${code}`));
+        return;
+      }
+      const text = resultText ?? streamed;
+      if (!text) {
+        reject(new Error("Claude returned an empty response"));
+        return;
+      }
+      resolve({
+        text,
+        sessionId: sessionId ?? input.resumeSessionId ?? input.newSessionId,
+        inputTokens,
+        outputTokens,
+        durationMs: durationMs ?? Date.now() - startMs,
+      });
+    });
+  });
+}
+
+/** Run one chat turn through `claude -p`, returning the reply + session id. */
+export async function runCliChat(input: CliChatInput): Promise<CliChatResult> {
+  const args = [
+    "-p",
+    "--output-format",
+    "json",
+    "--model",
+    MODEL,
+    ...sessionArgs(input),
+  ];
+  const env = authEnv(input.auth);
 
   const startMs = Date.now();
 

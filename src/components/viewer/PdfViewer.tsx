@@ -88,10 +88,20 @@ export function PdfViewer({ src }: PdfViewerProps) {
   // Debounce timer for container-resize events (sidebar slide animation fires
   // a ResizeObserver callback on every rAF; batching prevents per-frame renders).
   const containerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Previous estimated slot height — used to restore scroll position proportionally
-  // when renderWidth changes (panel open/close, sidebar collapse) so the same
-  // page stays in view even though raw pixel heights changed.
-  const prevEstimatedSlotRef = useRef(0);
+
+  // Anchor for width-driven reflows: the page (and fraction into it) the user is
+  // currently viewing, captured live as they scroll. When the container width
+  // changes (sidebar/panel toggle) the page heights reflow, so we re-anchor to
+  // this page rather than letting a fixed pixel scrollTop drift to a random
+  // page. Zoom does NOT use this (see the reflow effect) — zoom stays free-form.
+  const anchorRef = useRef<{ page: number; frac: number }>({ page: 1, frac: 0 });
+  // While a reflow restore is in flight, ignore the scroll events it triggers so
+  // they don't overwrite the anchor we're restoring to.
+  const suspendAnchorCaptureRef = useRef(false);
+  // Previous committed container width / rotation, to detect layout reflows
+  // (as opposed to zoom, which changes renderWidth but not container width).
+  const prevContainerWidthRef = useRef(0);
+  const prevRotationRef = useRef(rotation);
 
   // Memoize the file so react-pdf's `===` change-detection stays stable across
   // re-renders that don't actually change `src`.
@@ -243,27 +253,91 @@ export function PdfViewer({ src }: PdfViewerProps) {
     }
   }, [numPages, renderWidth]);
 
-  // When the render width or rotation changes, previously measured page heights
-  // are stale — drop the measurement cache so the virtualizer re-estimates.
-  // Also restore scrollTop proportionally so the same page stays in view:
-  //   newScrollTop = oldScrollTop × (newSlot / oldSlot)
-  // This keeps the visible page stable when a panel opens/closes or the sidebar
-  // collapses, even though the physical pixel heights of all pages change.
+  // Capture the page (and fraction into it) currently at the top of the viewport,
+  // live as the user scrolls. Used only to re-anchor across layout reflows.
+  const captureAnchor = useCallback(() => {
+    if (suspendAnchorCaptureRef.current) return;
+    const stage = stageRef.current;
+    if (!stage || numPages <= 0) return;
+    const scrollTop = stage.scrollTop;
+    for (const item of virtualizer.getVirtualItems()) {
+      if (item.start + item.size > scrollTop) {
+        const frac = item.size > 0 ? (scrollTop - item.start) / item.size : 0;
+        anchorRef.current = {
+          page: item.index + 1,
+          frac: Math.min(1, Math.max(0, frac)),
+        };
+        return;
+      }
+    }
+  }, [numPages, virtualizer]);
+
+  // Render width/rotation changed → drop stale page-height measurements. On a
+  // *layout reflow* (container width or rotation changed — i.e. sidebar/panel
+  // toggle) also re-anchor to the page the user was viewing so it doesn't drift
+  // to a random page. A *zoom* changes renderWidth but not the container width,
+  // so it falls through to a plain re-measure and stays free-form.
   useEffect(() => {
     const stage = stageRef.current;
-    const prevSlot = prevEstimatedSlotRef.current;
-    const newSlot = Math.max(1, Math.round(estimatedPageHeight + GAP));
-    prevEstimatedSlotRef.current = newSlot;
+    const prevW = prevContainerWidthRef.current;
+    const prevRot = prevRotationRef.current;
+    const w = container.width;
+    const widthReflow = prevW > 0 && w > 0 && prevW !== w;
+    const rotationReflow = prevRot !== rotation;
+    prevContainerWidthRef.current = w;
+    prevRotationRef.current = rotation;
 
-    if (stage && numPages > 0 && prevSlot > 0 && prevSlot !== newSlot) {
-      const savedTop = stage.scrollTop;
+    if (!stage || numPages <= 0 || (!widthReflow && !rotationReflow)) {
       virtualizer.measure();
-      stage.scrollTop = Math.round(savedTop * (newSlot / prevSlot));
-    } else {
-      virtualizer.measure();
+      return;
     }
+
+    const { page, frac } = anchorRef.current;
+    suspendAnchorCaptureRef.current = true;
+    virtualizer.measure();
+
+    // Immediate estimate-based jump to the anchor page…
+    const newSlot = Math.max(1, estimatedPageHeight + GAP);
+    stage.scrollTop = Math.max(0, Math.round((page - 1 + frac) * newSlot));
+
+    // …then snap to the page's real measured offset once it has re-rendered at
+    // the new width (handles mixed page sizes exactly).
+    const PAD = 24; // matches the stage's top padding
+    let cancelled = false;
+    let tries = 0;
+    const snap = () => {
+      if (cancelled) return;
+      const st = stageRef.current;
+      if (!st) return;
+      const el = st.querySelector<HTMLElement>(`[data-page-number="${page}"]`);
+      if (el) {
+        const pageTop =
+          el.getBoundingClientRect().top -
+          st.getBoundingClientRect().top +
+          st.scrollTop -
+          PAD;
+        const target = Math.max(
+          0,
+          Math.round(pageTop + frac * el.getBoundingClientRect().height),
+        );
+        if (Math.abs(st.scrollTop - target) > 2) st.scrollTop = target;
+      }
+      tries += 1;
+      if (tries < 4) {
+        setTimeout(snap, 70);
+      } else {
+        suspendAnchorCaptureRef.current = false;
+      }
+    };
+    const t = setTimeout(snap, 60);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+      suspendAnchorCaptureRef.current = false;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [renderWidth, rotation]);
+  }, [renderWidth, rotation, container.width]);
 
   // ---- Current-page tracking (debounced) ----
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -477,7 +551,12 @@ export function PdfViewer({ src }: PdfViewerProps) {
         error={errorNode}
         className={styles.document}
       >
-        <div ref={stageRef} className={styles.stage} data-pdf-stage>
+        <div
+          ref={stageRef}
+          className={styles.stage}
+          data-pdf-stage
+          onScroll={captureAnchor}
+        >
           <div
             ref={listRef}
             className={styles.column}

@@ -3,6 +3,7 @@
 import { apiDelete, apiGet, apiPost } from "@/lib/apiClient";
 import type {
   ChatMessageDTO,
+  ChatStreamEvent,
   CreateHighlightInput,
   HighlightDTO,
   SendMessageResponse,
@@ -59,4 +60,45 @@ export async function sendChatMessage(
     highlightId,
     question,
   });
+}
+
+/**
+ * Send a question and stream the reply via SSE, yielding delta/done/error
+ * events as they arrive from the server.
+ */
+export async function* streamChatMessage(
+  documentId: string,
+  highlightId: string,
+  question: string,
+): AsyncGenerator<ChatStreamEvent> {
+  const response = await fetch(
+    "/api/documents/" + documentId + "/chat/stream",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ highlightId, question }),
+    },
+  );
+
+  if (!response.ok || !response.body) {
+    throw new Error("Stream request failed: " + response.status);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split("\n\n");
+    buffer = parts.pop() ?? "";
+    for (const part of parts) {
+      const line = part.trim();
+      if (!line.startsWith("data:")) continue;
+      const json = line.slice(5).trim();
+      if (json) yield JSON.parse(json) as ChatStreamEvent;
+    }
+  }
 }

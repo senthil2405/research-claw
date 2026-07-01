@@ -5,7 +5,12 @@ import type {
 } from "@prisma/client";
 
 import { prisma } from "@/server/db";
-import { resolveClaudeAuth, runClaudeTurn, withSessionLock } from "@/server/claude";
+import {
+  resolveClaudeAuth,
+  runClaudeTurn,
+  runClaudeTurnStreaming,
+  withSessionLock,
+} from "@/server/claude";
 import { getOwnedDocument } from "@/server/services/documents";
 import type { OwnerRef } from "@/server/owner";
 import type {
@@ -180,6 +185,88 @@ function buildUserMessage(selectedText: string, question: string, paperTitle?: s
   }
   const passageBlock = `Regarding this passage from the paper:\n\n"""${passage}"""`;
   return q ? `${passageBlock}\n\n${q}` : passageBlock;
+}
+
+// ---- Stream a message -----------------------------------------------------
+
+/**
+ * Same contract as sendMessage, but pipes the assistant's reply through
+ * `onToken` as it streams from the CLI. Persistence is byte-for-byte identical
+ * to sendMessage (relies on --resume for history, so the DB writes and FK
+ * relationships are unchanged) — only the turn call differs.
+ */
+export async function streamMessage(
+  owner: OwnerRef,
+  documentId: string,
+  highlightId: string,
+  question: string,
+  onToken: (delta: string) => void,
+): Promise<SendMessageResponse> {
+  const doc = await requireOwnedDocument(owner, documentId);
+  const highlight = await requireHighlight(documentId, highlightId);
+
+  const paperTitle = doc.title ?? null;
+  const systemPrompt = buildSystemPrompt(paperTitle ?? doc.filename.replace(/\.pdf$/i, ""));
+  const userMessage = buildUserMessage(highlight.selectedText, question, paperTitle);
+  const auth = await resolveClaudeAuth(owner);
+
+  return withSessionLock(documentId, async () => {
+    const session = await getOrCreateSession(documentId);
+
+    const turnResult = await runClaudeTurnStreaming(
+      {
+        documentId,
+        systemPrompt,
+        userMessage,
+        resumeSessionId: session.claudeSessionId,
+        auth,
+      },
+      onToken,
+    );
+
+    const turnIndex = await prisma.chatMessage.count({ where: { highlightId } });
+    const userSeq = session.seqCounter;
+
+    const [userRow, assistantRow] = await prisma.$transaction([
+      prisma.chatMessage.create({
+        data: {
+          sessionId: session.id,
+          highlightId,
+          role: "user",
+          content: question,
+          highlightText: highlight.selectedText,
+          turnIndex,
+          seq: userSeq,
+        },
+      }),
+      prisma.chatMessage.create({
+        data: {
+          sessionId: session.id,
+          highlightId,
+          role: "assistant",
+          content: turnResult.text,
+          highlightText: null,
+          turnIndex: turnIndex + 1,
+          seq: userSeq + 1,
+          inputTokens: turnResult.inputTokens,
+          outputTokens: turnResult.outputTokens,
+          durationMs: turnResult.durationMs,
+        },
+      }),
+      prisma.chatSession.update({
+        where: { id: session.id },
+        data: {
+          claudeSessionId: turnResult.sessionId,
+          seqCounter: session.seqCounter + 2,
+        },
+      }),
+    ]);
+
+    return {
+      userMessage: toChatMessageDTO(userRow),
+      assistantMessage: toChatMessageDTO(assistantRow),
+    };
+  });
 }
 
 // ---- Send a message -------------------------------------------------------

@@ -15,7 +15,7 @@ import { useChatStore, DEFAULT_WINDOW_SIZE } from "@/store/chatStore";
 import { useDocChatOptional } from "@/components/viewer/DocChatContext";
 import { windowTopBoundary } from "@/components/viewer/placement";
 import { useChatMessages } from "@/hooks/useChatMessages";
-import { useSendChatMessage } from "@/hooks/useSendChatMessage";
+import { useStreamChatMessage } from "@/hooks/useStreamChatMessage";
 import { useDeleteHighlight } from "@/hooks/useDeleteHighlight";
 import { Markdown } from "./Markdown";
 import type { ChatMessageDTO } from "@/lib/types";
@@ -77,7 +77,7 @@ export default function ChatWindow({
   const setPanelWidth = useChatStore((s) => s.setPanelWidth);
 
   const { messages, isFetched } = useChatMessages(documentId, highlightId);
-  const sendMutation = useSendChatMessage(documentId, highlightId);
+  const sendMutation = useStreamChatMessage(documentId, highlightId);
   const deleteHighlight = useDeleteHighlight(documentId);
 
   const handleClose = useCallback(() => {
@@ -143,11 +143,17 @@ export default function ChatWindow({
     return () => document.removeEventListener("keydown", onKey);
   }, [isTop, resizing, handleClose]);
 
-  // Auto-scroll to the newest message / typing indicator.
+  // Scroll to the bottom once when the conversation first loads (so opening a
+  // chat shows its latest message). We deliberately do NOT auto-scroll while a
+  // reply streams in — the viewport stays put and the user scrolls down himself
+  // to follow the stream.
+  const initialScrollDoneRef = useRef(false);
   useLayoutEffect(() => {
+    if (initialScrollDoneRef.current || !isFetched) return;
     const el = messagesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [messages.length, sendMutation.isPending]);
+    initialScrollDoneRef.current = true;
+  }, [isFetched]);
 
   // ---- Floating header drag ----
 
@@ -333,6 +339,12 @@ export default function ChatWindow({
     if (!question && !canSendEmpty) return;
     sendMutation.mutate(question);
     setDraft("");
+    // Reveal the just-sent question once. After this we don't follow the stream
+    // — the viewport stays where it is and the user scrolls to read the reply.
+    requestAnimationFrame(() => {
+      const el = messagesRef.current;
+      if (el) el.scrollTop = el.scrollHeight;
+    });
   }, [draft, sendMutation, canSendEmpty]);
 
   const onTextareaKeyDown = useCallback(
@@ -442,11 +454,15 @@ export default function ChatWindow({
               className={[styles.bubble, styles.bubbleAssistant].join(" ")}
               aria-label="Assistant is typing"
             >
-              <span className={styles.typing}>
-                <span className={styles.dot} />
-                <span className={styles.dot} />
-                <span className={styles.dot} />
-              </span>
+              {sendMutation.streamingText ? (
+                <Markdown content={sendMutation.streamingText} />
+              ) : (
+                <span className={styles.typing}>
+                  <span className={styles.dot} />
+                  <span className={styles.dot} />
+                  <span className={styles.dot} />
+                </span>
+              )}
             </div>
           </div>
         ) : null}

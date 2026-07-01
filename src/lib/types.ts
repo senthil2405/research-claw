@@ -82,6 +82,12 @@ export interface SendMessageResponse {
   assistantMessage: ChatMessageDTO;
 }
 
+/** SSE events emitted by the /chat/stream endpoint. */
+export type ChatStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "done"; userMessage: ChatMessageDTO; assistantMessage: ChatMessageDTO }
+  | { type: "error"; message: string };
+
 // ---- Part C: BYOK Anthropic API key ----
 
 /** Non-sensitive status of a user's stored Anthropic API key. */

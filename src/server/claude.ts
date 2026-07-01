@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { OwnerRef } from "@/server/owner";
 import { prisma } from "@/server/db";
-import { getAuthStatus, runCliChat, userConfigDir } from "@/server/claudeCli";
+import { getAuthStatus, runCliChat, streamCliChat, userConfigDir } from "@/server/claudeCli";
 
 // Chat backend. Each logged-in user authorizes their OWN Anthropic account via
 // the Claude Code CLI (`claude auth login`); chat then runs `claude -p` against
@@ -106,6 +106,64 @@ function mockReply(input: ClaudeTurnInput): ClaudeTurnResult {
     outputTokens: null,
     durationMs: null,
     mock: true,
+  };
+}
+
+/**
+ * Stream a single chat turn, invoking `onToken` for each text delta.
+ * Mirrors runClaudeTurn (including the resume→fresh-session fallback) but pipes
+ * tokens through the CLI's stream-json output. Mock mode emits the canned reply
+ * as one chunk after a short delay.
+ */
+export async function runClaudeTurnStreaming(
+  input: ClaudeTurnInput,
+  onToken: (delta: string) => void,
+): Promise<ClaudeTurnResult> {
+  if (input.auth.mode === "mock") {
+    await new Promise((r) => setTimeout(r, 250));
+    const reply = mockReply(input);
+    onToken(reply.text);
+    return reply;
+  }
+
+  const auth =
+    input.auth.mode === "account"
+      ? { configDir: input.auth.configDir }
+      : { apiKey: input.auth.apiKey };
+
+  const run = (resume: string | null) =>
+    streamCliChat(
+      {
+        systemPrompt: input.systemPrompt,
+        userMessage: input.userMessage,
+        resumeSessionId: resume,
+        newSessionId: randomUUID(),
+        auth,
+      },
+      onToken,
+    );
+
+  let result;
+  try {
+    result = await run(input.resumeSessionId);
+  } catch (err) {
+    // A stored session that can't be resumed (e.g. auth changed) → start fresh.
+    // Safe because no tokens have been persisted yet; the client simply sees the
+    // stream restart from the fresh attempt.
+    if (input.resumeSessionId) {
+      result = await run(null);
+    } else {
+      throw err;
+    }
+  }
+
+  return {
+    text: result.text,
+    sessionId: result.sessionId,
+    inputTokens: result.inputTokens,
+    outputTokens: result.outputTokens,
+    durationMs: result.durationMs,
+    mock: false,
   };
 }
 

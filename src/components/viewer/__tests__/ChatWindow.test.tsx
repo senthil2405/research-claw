@@ -25,8 +25,8 @@ vi.mock("@/hooks/useChatMessages", () => ({
   useChatMessages: () => ({ messages: mockMessages, isFetched: true }),
 }));
 
-vi.mock("@/hooks/useSendChatMessage", () => ({
-  useSendChatMessage: () => ({ mutate: mockMutate, isPending: false }),
+vi.mock("@/hooks/useStreamChatMessage", () => ({
+  useStreamChatMessage: () => ({ mutate: mockMutate, isPending: false, streamingText: null }),
 }));
 
 vi.mock("@/hooks/useDeleteHighlight", () => ({
