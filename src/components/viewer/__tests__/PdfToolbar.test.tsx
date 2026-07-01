@@ -26,6 +26,7 @@ function makeHighlight(id: string): HighlightDTO {
 function makeCtx(highlights: HighlightDTO[] = []): DocChatContextValue {
   return {
     documentId: "doc1",
+    filename: "test.pdf",
     highlights,
     startChatFromSelection: vi.fn(),
     startChatNoSelection: vi.fn(),
@@ -58,16 +59,16 @@ describe("PdfToolbar — chat count badge", () => {
 
   it("shows badge with count 1 when there is one chat", () => {
     renderToolbar([makeHighlight("h1")]);
-    const badge = screen.getByLabelText("1 chats");
-    expect(badge).toBeInTheDocument();
-    expect(badge).toHaveTextContent("1");
+    const badges = screen.getAllByLabelText("1 chats");
+    expect(badges.length).toBeGreaterThan(0);
+    expect(badges[0]).toHaveTextContent("1");
   });
 
   it("shows badge with correct count for multiple chats", () => {
     renderToolbar(["h1", "h2", "h3"].map(makeHighlight));
-    const badge = screen.getByLabelText("3 chats");
-    expect(badge).toBeInTheDocument();
-    expect(badge).toHaveTextContent("3");
+    const badges = screen.getAllByLabelText("3 chats");
+    expect(badges.length).toBeGreaterThan(0);
+    expect(badges[0]).toHaveTextContent("3");
   });
 
   it("caps the badge display at 99+ for 100 or more chats", () => {
@@ -75,14 +76,14 @@ describe("PdfToolbar — chat count badge", () => {
       makeHighlight(`h${i}`),
     );
     renderToolbar(highlights);
-    const badge = screen.getByLabelText("100 chats");
-    expect(badge).toBeInTheDocument();
-    expect(badge).toHaveTextContent("99+");
+    const badges = screen.getAllByLabelText("100 chats");
+    expect(badges.length).toBeGreaterThan(0);
+    expect(badges[0]).toHaveTextContent("99+");
   });
 
   it("updates the badge when highlights change", () => {
     const { rerender } = renderToolbar([makeHighlight("h1")]);
-    expect(screen.getByLabelText("1 chats")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("1 chats").length).toBeGreaterThan(0);
 
     rerender(
       <DocChatContext.Provider
@@ -91,6 +92,6 @@ describe("PdfToolbar — chat count badge", () => {
         <PdfToolbar src="/api/documents/doc1/file" filename="test.pdf" />
       </DocChatContext.Provider>,
     );
-    expect(screen.getByLabelText("2 chats")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("2 chats").length).toBeGreaterThan(0);
   });
 });

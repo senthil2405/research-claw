@@ -10,6 +10,7 @@
  */
 import {
   useCallback,
+  useMemo,
   useRef,
   useState,
   type ChangeEvent,
@@ -21,6 +22,7 @@ import { useDocChatOptional } from "./DocChatContext";
 import styles from "./PdfToolbar.module.css";
 import {
   ArrowUpIcon,
+  ChatOpenIcon,
   ChatPanelIcon,
   DownloadIcon,
   FitPageIcon,
@@ -66,6 +68,16 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
   const docChat = useDocChatOptional();
   const chatCount = docChat?.highlights.length ?? 0;
   const setCurrentPageStore = useViewerStore((s) => s.setCurrentPage);
+
+  // First highlight (page-order) — used by the open-chat button.
+  const firstHighlight = useMemo(() => {
+    const list = docChat?.highlights ?? [];
+    if (list.length === 0) return null;
+    return [...list].sort((a, b) => {
+      if (a.pageNumber !== b.pageNumber) return a.pageNumber - b.pageNumber;
+      return (a.rects[0]?.y ?? 0) - (b.rects[0]?.y ?? 0);
+    })[0];
+  }, [docChat?.highlights]);
 
   // Local, editable mirror of the page box. Kept in sync with the store unless
   // the user is mid-edit. Synced during render (React's "adjust state on prop
@@ -132,6 +144,18 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
     a.click();
     document.body.removeChild(a);
   }, [src, filename]);
+
+  // ---- Open / focus chat panel ----
+  const handleOpenChat = useCallback(() => {
+    if (!docChat) return;
+    if (firstHighlight) {
+      setCurrentPageStore(firstHighlight.pageNumber);
+      requestScroll(firstHighlight.pageNumber);
+      docChat.openWindow(firstHighlight.id);
+    } else {
+      docChat.startChatNoSelection();
+    }
+  }, [docChat, firstHighlight, setCurrentPageStore, requestScroll]);
 
   // ---- Print (hidden iframe) ----
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -353,6 +377,19 @@ export default function PdfToolbar({ src, filename }: PdfToolbarProps) {
         onClick={toggleThumbs}
       >
         <ThumbnailsIcon />
+      </button>
+
+      <span className={styles.divider} aria-hidden="true" />
+
+      {/* 12. Open chat (rightmost) */}
+      <button
+        type="button"
+        className={styles.iconButton}
+        aria-label="Open chat"
+        title="Open chat"
+        onClick={handleOpenChat}
+      >
+        <ChatOpenIcon />
       </button>
 
       {/* Hidden iframe used for printing. */}

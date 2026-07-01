@@ -323,12 +323,17 @@ export default function ChatWindow({
 
   // ---- Message send ----
 
+  // Allow sending with an empty draft when there's selected text and no
+  // messages yet — the passage is the implicit question.
+  const canSendEmpty = !!selectedText && messages.length === 0;
+
   const handleSend = useCallback(() => {
     const question = draft.trim();
-    if (!question || sendMutation.isPending) return;
+    if (sendMutation.isPending) return;
+    if (!question && !canSendEmpty) return;
     sendMutation.mutate(question);
     setDraft("");
-  }, [draft, sendMutation]);
+  }, [draft, sendMutation, canSendEmpty]);
 
   const onTextareaKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -381,12 +386,15 @@ export default function ChatWindow({
       <div className={styles.messages} ref={messagesRef}>
         {messages.length === 0 && !sendMutation.isPending ? (
           <p className={styles.empty}>
-            Ask a question about this passage to start the conversation.
+            Select any piece of text and start a conversation on the selected topic.
+            <br />
+            Click ⌘+Enter / Ctrl+Enter to start a new chat.
           </p>
         ) : null}
 
         {messages.map((msg: ChatMessageDTO) => {
           const isUser = msg.role === "user";
+          if (isUser && msg.content.trim() === "") return null;
           const showQuote =
             isUser &&
             !!msg.highlightText &&
@@ -459,7 +467,7 @@ export default function ChatWindow({
           type="button"
           className={styles.sendButton}
           aria-label="Send message"
-          disabled={sendMutation.isPending || draft.trim().length === 0}
+          disabled={sendMutation.isPending || (draft.trim().length === 0 && !canSendEmpty)}
           onClick={handleSend}
         >
           ↑
@@ -519,7 +527,9 @@ export default function ChatWindow({
           </div>
         </div>
 
-        {bodyContent}
+        <div className={styles.panelBody}>
+          {bodyContent}
+        </div>
       </section>
     );
   }

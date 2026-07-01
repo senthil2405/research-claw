@@ -36,7 +36,7 @@ export default function DocPage() {
           </Link>
         </div>
       ) : (
-        <DocViewer src={src} documentId={id} filename={doc?.filename} />
+        <DocViewer src={src} documentId={id} filename={doc?.filename} paperTitle={doc?.title ?? undefined} />
       )}
     </AppShell>
   );

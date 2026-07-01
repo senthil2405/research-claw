@@ -65,7 +65,7 @@ test("chat history panel lists chats and reopens them; go-to-top is present", as
   await expect(page.getByRole("dialog")).toHaveCount(0);
 
   // ---- Badge: the toolbar toggle button should now show "1" ----
-  await expect(page.locator('[aria-label="1 chats"]')).toBeVisible();
+  await expect(page.locator('[aria-label="1 chats"]').first()).toBeVisible();
 
   // ---- Chat-history panel is open by default; verify it shows the new chat ----
   const panel = page.getByRole("complementary", { name: "Chats in this PDF" });

@@ -49,15 +49,17 @@ describe("chatStore", () => {
   it("openWindow defaults to panel mode", () => {
     store().openWindow("h1");
     expect(store().windows[0].mode).toBe("panel");
-    expect(store().windows[0].panelWidth).toBe(380);
+    // Panel width is computed from window.innerWidth (jsdom default: 1024).
+    expect(store().windows[0].panelWidth).toBe(Math.round(1024 / 3));
   });
 
-  it("openWindow enforces single-panel invariant: previous panel converts to floating", () => {
+  it("openWindow replaces an existing panel window with the new one", () => {
     store().openWindow("h1");
     expect(store().windows[0].mode).toBe("panel");
     store().openWindow("h2");
-    expect(store().windows).toHaveLength(2);
-    expect(store().windows.find((w) => w.highlightId === "h1")?.mode).toBe("floating");
+    // h1 is removed; h2 takes its place as the sole panel window.
+    expect(store().windows).toHaveLength(1);
+    expect(store().windows.find((w) => w.highlightId === "h1")).toBeUndefined();
     expect(store().windows.find((w) => w.highlightId === "h2")?.mode).toBe("panel");
   });
 
@@ -76,7 +78,9 @@ describe("chatStore", () => {
   });
 
   it("focusWindow raises z above the current top", () => {
+    // Open h1 as panel, convert to floating so we can have two windows at once.
     store().openWindow("h1");
+    store().setWindowMode("h1", "floating");
     store().openWindow("h2");
     const topBefore = store().topZ;
     store().focusWindow("h1");
@@ -106,21 +110,23 @@ describe("chatStore", () => {
 
   it("closeWindow removes only the targeted window", () => {
     store().openWindow("h1");
+    store().setWindowMode("h1", "floating");
     store().openWindow("h2");
     store().closeWindow("h1");
     expect(store().windows.map((w) => w.highlightId)).toEqual(["h2"]);
   });
 
   it("moveWindow updates position of the targeted window only", () => {
+    // Open h1 as panel, convert to floating so we can have two windows at once.
     store().openWindow("h1", { x: 0, y: 0 });
-    // Opening h2 converts h1 to floating and creates h2 as panel.
+    store().setWindowMode("h1", "floating");
     store().openWindow("h2", { x: 0, y: 0 });
     store().moveWindow("h1", 500, 600);
     expect(store().windows.find((w) => w.highlightId === "h1")).toMatchObject({
       x: 500,
       y: 600,
     });
-    // h2 unchanged (no cascade in panel mode).
+    // h2 unchanged.
     expect(store().windows.find((w) => w.highlightId === "h2")).toMatchObject({
       x: 0,
       y: 0,

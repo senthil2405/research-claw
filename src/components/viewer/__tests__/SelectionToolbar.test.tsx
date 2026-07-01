@@ -24,6 +24,7 @@ function renderWithProvider(value: DocChatContextValue) {
 function makeCtx(over: Partial<DocChatContextValue> = {}): DocChatContextValue {
   return {
     documentId: "doc1",
+    filename: "test.pdf",
     highlights: [],
     startChatFromSelection: vi.fn(),
     startChatNoSelection: vi.fn(),

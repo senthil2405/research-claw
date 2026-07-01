@@ -5,8 +5,6 @@ import type {
 } from "@prisma/client";
 
 import { prisma } from "@/server/db";
-import { localFileStore } from "@/server/files/localStore";
-import { extractPdfText } from "@/server/pdf";
 import { resolveClaudeAuth, runClaudeTurn, withSessionLock } from "@/server/claude";
 import { getOwnedDocument } from "@/server/services/documents";
 import type { OwnerRef } from "@/server/owner";
@@ -29,16 +27,6 @@ export class NotFoundError extends Error {
     this.name = "NotFoundError";
   }
 }
-
-/** Max characters of extracted PDF text injected into the system prompt. */
-const MAX_PDF_TEXT_CHARS = 120_000;
-
-/**
- * Process-level cache of extracted PDF text, keyed by documentId. Extraction is
- * expensive (parses every page) and the bytes are immutable for a given
- * document, so we reuse the result for the life of the server process.
- */
-const pdfTextCache = new Map<string, string>();
 
 // ---- DTO mappers ----------------------------------------------------------
 
@@ -165,7 +153,7 @@ export async function listMessages(
   return rows.map(toChatMessageDTO);
 }
 
-// ---- Session + PDF text helpers -------------------------------------------
+// ---- Session helper -------------------------------------------------------
 
 /** Get-or-create the single ChatSession for a document. */
 async function getOrCreateSession(documentId: string): Promise<ChatSession> {
@@ -176,50 +164,22 @@ async function getOrCreateSession(documentId: string): Promise<ChatSession> {
   });
 }
 
-/** Read the PDF bytes for a stored document into a Buffer. */
-async function readPdfBuffer(storedName: string): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  const stream = localFileStore.createReadStream(storedName);
-  for await (const chunk of stream) {
-    chunks.push(chunk as Buffer);
-  }
-  return Buffer.concat(chunks);
+function buildSystemPrompt(filename: string): string {
+  return `\
+You are a question answering agent helping someone read and understand a research paper called "${filename}". 
+
+When explaining unfamiliar concepts, technologies, or terminology in this document, follow these conventions:
+0. Give answers in the same way you would write abd explain answers in a descriptive examination, be specific with the details and dont use any lingo terms like .. etc keep the answer descriptive, if you are refering to something name what are you referin to `
 }
 
-/** Extract (and cache) the full text of a document's PDF. */
-async function getPdfText(
-  documentId: string,
-  storedName: string,
-): Promise<string> {
-  const cached = pdfTextCache.get(documentId);
-  if (cached !== undefined) return cached;
-
-  const buf = await readPdfBuffer(storedName);
-  // pdfjs (used by extractPdfText) rejects a Node Buffer — it requires a plain
-  // Uint8Array. Copy into one so the bytes aren't tied to Buffer's pool.
-  const text = await extractPdfText(new Uint8Array(buf));
-  pdfTextCache.set(documentId, text);
-  return text;
-}
-
-function buildSystemPrompt(filename: string, pdfText: string): string {
-  let injected = pdfText;
-  if (injected.length > MAX_PDF_TEXT_CHARS) {
-    injected = injected.slice(0, MAX_PDF_TEXT_CHARS) + "\n[truncated]";
-  }
-  return (
-    "You are a research assistant helping a user understand a specific " +
-    "academic paper. Answer their questions clearly and concisely, grounded " +
-    "in the paper. When they reference a highlighted passage, focus on it but " +
-    "use the whole paper as context.\n\n" +
-    `=== PAPER: ${filename} ===\n${injected}\n=== END PAPER ===`
-  );
-}
-
-function buildUserMessage(selectedText: string, question: string): string {
+function buildUserMessage(selectedText: string, question: string, paperTitle?: string | null): string {
   const passage = selectedText.trim();
-  if (!passage) return question;
-  return `Regarding this passage from the paper:\n\n"""${passage}"""\n\n${question}`;
+  const q = question.trim();
+  if (!passage) {
+    return paperTitle ? `The paper being discussed is "${paperTitle}".\n\n${q}` : q;
+  }
+  const passageBlock = `Regarding this passage from the paper:\n\n"""${passage}"""`;
+  return q ? `${passageBlock}\n\n${q}` : passageBlock;
 }
 
 // ---- Send a message -------------------------------------------------------
@@ -233,9 +193,9 @@ export async function sendMessage(
   const doc = await requireOwnedDocument(owner, documentId);
   const highlight = await requireHighlight(documentId, highlightId);
 
-  const pdfText = await getPdfText(documentId, doc.storedName);
-  const systemPrompt = buildSystemPrompt(doc.filename, pdfText);
-  const userMessage = buildUserMessage(highlight.selectedText, question);
+  const paperTitle = doc.title ?? null;
+  const systemPrompt = buildSystemPrompt(paperTitle ?? doc.filename.replace(/\.pdf$/i, ""));
+  const userMessage = buildUserMessage(highlight.selectedText, question, paperTitle);
   const auth = await resolveClaudeAuth(owner);
 
   // The entire critical section — session read, user turn, and the DB

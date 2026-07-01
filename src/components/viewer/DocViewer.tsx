@@ -37,6 +37,8 @@ export interface DocViewerProps {
   documentId: string;
   /** Optional display name shown in the toolbar. */
   filename?: string;
+  /** Extracted paper title from the PDF metadata/content. */
+  paperTitle?: string;
 }
 
 /**
@@ -88,7 +90,7 @@ function DocViewerBody({
  * the DocChatProvider so text selection, highlights, and chat windows work.
  * Resets the shared viewer + chat stores whenever the document changes.
  */
-export function DocViewer({ src, documentId, filename }: DocViewerProps) {
+export function DocViewer({ src, documentId, filename, paperTitle }: DocViewerProps) {
   const resetViewer = useViewerStore((s) => s.reset);
   const resetChat = useChatStore((s) => s.reset);
   const collapseSidebar = useUiStore((s) => s.setSidebarCollapsed);
@@ -137,7 +139,11 @@ export function DocViewer({ src, documentId, filename }: DocViewerProps) {
   }, []);
 
   return (
-    <DocChatProvider documentId={documentId} stageRef={viewerRef}>
+    <DocChatProvider
+      documentId={documentId}
+      filename={paperTitle ?? (filename ?? "").replace(/\.pdf$/i, "") ?? ""}
+      stageRef={viewerRef}
+    >
       <div className={styles.root}>
         <DocViewerBody src={src} filename={filename} stageRef={viewerRef} />
       </div>

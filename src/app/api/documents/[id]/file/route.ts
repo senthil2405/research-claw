@@ -71,7 +71,15 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
   const doc = await getOwnedDocument(owner, id);
   if (!doc) return httpErrors.notFound();
 
-  const { size } = await localFileStore.stat(doc.storedName);
+  let size: number;
+  try {
+    ({ size } = await localFileStore.stat(doc.storedName));
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return httpErrors.notFound();
+    }
+    throw err;
+  }
 
   const dispositionName = sanitizeHeaderFilename(doc.filename);
   const baseHeaders: Record<string, string> = {

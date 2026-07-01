@@ -168,7 +168,7 @@ test("closing a chat with no messages removes its highlight", async ({
   ).toBeVisible({ timeout: 10_000 });
   // Wait for the empty state so the messages query has settled (fetched empty).
   await expect(
-    dialog.getByText(/Ask a question about this passage/i),
+    dialog.getByText(/Select any piece of text/i),
   ).toBeVisible({ timeout: 10_000 });
 
   // Close without sending → the highlight should be removed too.

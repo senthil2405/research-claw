@@ -91,7 +91,7 @@ describe("ChatWindow", () => {
   it("shows the empty-state prompt when there are no messages", () => {
     renderWindow();
     expect(
-      screen.getByText(/Ask a question about this passage/i),
+      screen.getByText(/Select any piece of text/i),
     ).toBeInTheDocument();
   });
 
@@ -121,7 +121,16 @@ describe("ChatWindow", () => {
     expect(mockMutate).toHaveBeenCalledWith("via button");
   });
 
-  it("does not send an empty/whitespace draft", () => {
+  it("sends empty draft when selected text exists and no prior messages", () => {
+    // canSendEmpty = true: passage present, no messages yet.
+    renderWindow();
+    const textarea = screen.getByLabelText("Message");
+    fireEvent.keyDown(textarea, { key: "Enter" });
+    expect(mockMutate).toHaveBeenCalledWith("");
+  });
+
+  it("does not send an empty/whitespace draft when prior messages exist", () => {
+    mockMessages = [msg({ id: "m1", role: "user", content: "prior question" })];
     renderWindow();
     const textarea = screen.getByLabelText("Message");
     fireEvent.change(textarea, { target: { value: "   " } });

@@ -28,8 +28,8 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   if (typeof highlightId !== "string" || highlightId.length === 0) {
     return httpErrors.badRequest("highlightId is required");
   }
-  if (typeof question !== "string" || question.trim().length === 0) {
-    return httpErrors.badRequest("question must be a non-empty string");
+  if (typeof question !== "string") {
+    return httpErrors.badRequest("question must be a string");
   }
 
   try {

@@ -6,6 +6,7 @@ import type { WindowPlacement } from "./placement";
 
 export interface DocChatContextValue {
   documentId: string;
+  filename: string;
   highlights: HighlightDTO[];
   /** Create a highlight from the current chatStore.activeSelection and open its window. */
   startChatFromSelection: () => void;

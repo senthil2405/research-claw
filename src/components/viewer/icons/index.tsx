@@ -116,11 +116,16 @@ export function PrintIcon({ size = 18, className, ...rest }: IconProps) {
   );
 }
 
-/** Chat-history panel toggle — speech-bubble (MessageSquare style). */
+/** Chat-history panel toggle — numbered list (ListOrdered style). */
 export function ChatPanelIcon({ size = 18, className, ...rest }: IconProps) {
   return (
     <svg {...baseProps(size, className)} {...rest}>
-      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      <line x1="10" x2="21" y1="6" y2="6" />
+      <line x1="10" x2="21" y1="12" y2="12" />
+      <line x1="10" x2="21" y1="18" y2="18" />
+      <path d="M4 6h1v4" />
+      <path d="M4 10h2" />
+      <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
     </svg>
   );
 }
@@ -147,6 +152,15 @@ export function SunIcon({ size = 18, className, ...rest }: IconProps) {
       <line x1="20" y1="12" x2="22" y2="12" />
       <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
       <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
+    </svg>
+  );
+}
+
+/** Open-chat button — square speech bubble (MessageSquare style). */
+export function ChatOpenIcon({ size = 18, className, ...rest }: IconProps) {
+  return (
+    <svg {...baseProps(size, className)} {...rest}>
+      <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
     </svg>
   );
 }

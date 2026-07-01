@@ -35,8 +35,14 @@ export interface OpenWindow {
 
 /** Default chat window size (floating). */
 export const DEFAULT_WINDOW_SIZE = { width: 360, height: 460 };
-/** Default panel width when docked to the right edge. */
-export const DEFAULT_PANEL_WIDTH = 380;
+/** Fallback panel width (used during SSR or when window is unavailable). */
+export const DEFAULT_PANEL_WIDTH = 420;
+
+/** Compute the initial panel width as ~1/3 of the viewport, clamped to [280, 900]. */
+function defaultPanelWidth(): number {
+  if (typeof window === "undefined") return DEFAULT_PANEL_WIDTH;
+  return Math.min(900, Math.max(280, Math.round(window.innerWidth / 3)));
+}
 
 export interface ChatState {
   activeSelection: ActiveSelection | null;
@@ -99,22 +105,17 @@ export const useChatStore = create<ChatState>((set, get) => ({
         };
       }
       // New window: default to panel mode.
-      // Enforce single-panel invariant — convert any existing panel to floating.
-      const vw = typeof window !== "undefined" ? window.innerWidth : 1280;
-      const updated = s.windows.map((w) =>
-        w.mode === "panel"
-          ? {
-              ...w,
-              mode: "floating" as const,
-              x: Math.max(0, vw - (w.panelWidth + 40)),
-              y: 120,
-            }
-          : w,
-      );
+      // If a panel is already open, replace it (remove it) so the new chat
+      // takes over the panel slot. Floating windows are left untouched.
+      const existingPanel = s.windows.find((w) => w.mode === "panel");
+      const withoutPanel = existingPanel
+        ? s.windows.filter((w) => w.highlightId !== existingPanel.highlightId)
+        : s.windows;
+      const panelWidth = existingPanel?.panelWidth ?? defaultPanelWidth();
       return {
         topZ: z,
         windows: [
-          ...updated,
+          ...withoutPanel,
           {
             highlightId,
             mode: "panel",
@@ -122,7 +123,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
             y: pos?.y ?? DEFAULT_POS.y,
             width: DEFAULT_WINDOW_SIZE.width,
             height: DEFAULT_WINDOW_SIZE.height,
-            panelWidth: DEFAULT_PANEL_WIDTH,
+            panelWidth,
             minimized: false,
             z,
           },

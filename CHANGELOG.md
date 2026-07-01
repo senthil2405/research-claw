@@ -5,6 +5,89 @@ Each entry documents what changed, why, how it was built, and what tests gate it
 
 ---
 
+## [Unreleased] — 2026-07-01
+
+### Feature: Delete chat from sidebar
+
+A single **Delete chat** button at the bottom of the ChatHistoryPanel lets users remove the selected chat. The button is disabled when no chat is selected (`panelHighlightId` is null) and enabled immediately on selection. Clicking it closes the chat window and deletes the highlight from the server.
+
+| File | Change |
+|---|---|
+| `src/components/viewer/ChatHistoryPanel.tsx` | Removed three-dot menu markup; added `<footer>` with a full-width Delete button; `handleDelete` uses `panelHighlightId` from the store |
+| `src/components/viewer/ChatHistoryPanel.module.css` | Removed all three-dot menu CSS (`.menuWrap`, `.menuBtn`, `.menu`, `.menuItem`, `.menuItemDanger`, `.menuIcon`); added `.footer` (sticky bottom, border-top) and `.deleteBtn` (danger red, disabled style); moved `overflow-y: auto` from `.panel` to `.list` so the footer stays pinned below the scroll area |
+
+---
+
+### Feature: Send selected text to Claude without typing a question
+
+Users can now open a chat window and press Enter (or click Send) to send only the highlighted passage to Claude, without needing to type "explain this" or similar preamble. Claude receives the raw passage as the user turn and responds naturally.
+
+| File | Change |
+|---|---|
+| `src/components/viewer/ChatWindow.tsx` | Added `canSendEmpty` flag (`!!selectedText && messages.length === 0`); `handleSend` allows empty draft when `canSendEmpty`; Send button enabled when `canSendEmpty`; empty user bubble skipped in message list |
+| `src/app/api/documents/[id]/chat/route.ts` | Removed `question.trim().length === 0` validation — empty string is now a valid question when selected text provides context |
+| `src/server/services/chat.ts` | `buildUserMessage` omits the question line when `q` is empty, sending just the passage block |
+
+---
+
+### Feature: Dynamic default panel width (~1/3 of viewport)
+
+The right chat panel now opens at roughly one-third of the viewport width instead of a hardcoded 380 px, so its left edge aligns with the zoom control in the toolbar on typical screen sizes.
+
+| File | Change |
+|---|---|
+| `src/store/chatStore.ts` | Added `defaultPanelWidth()` — returns `Math.min(900, Math.max(280, Math.round(window.innerWidth / 3)))` with SSR fallback of 420 px; `openWindow` uses it for new panels; if a panel is already open its `panelWidth` is reused |
+
+---
+
+### Feature: Open-chat toolbar button
+
+A new chat icon at the right end of the PDF toolbar opens the first existing chat (scrolling to its page) or starts a new general chat if none exist.
+
+| File | Change |
+|---|---|
+| `src/components/viewer/PdfToolbar.tsx` | Added `handleOpenChat` callback; new button with `ChatOpenIcon` appended after the thumbnails divider |
+| `src/components/viewer/icons/index.tsx` | Added `ChatOpenIcon` (speech-bubble with arrow) |
+
+---
+
+### Feature: Auto-cleanup of empty no-selection chats
+
+When a user opens a new chat via the `+` button (no text selected) but navigates to a different chat before sending any message, the empty highlight is automatically deleted instead of lingering in the sidebar.
+
+| File | Change |
+|---|---|
+| `src/components/viewer/DocChatProvider.tsx` | Added `pendingEmptyId` ref tracking the last no-selection highlight; `cleanupPendingEmpty` checks message cache and deletes if empty; called on every `openWindow` and `startChatFromSelection` |
+
+---
+
+### Improvement: System prompt tuning — descriptive-exam style
+
+The Claude system prompt was rewritten to produce responses that teach rather than document: lead with intuition, write in prose (not bullets/headers), layer from simple mental model to precision, use concrete examples, and skip preamble. A rule 0 enforces descriptive-exam specificity — no abbreviations, no ellipses, always name what is being referenced.
+
+| File | Change |
+|---|---|
+| `src/server/services/chat.ts` | Replaced `buildSystemPrompt` with the new descriptive-exam prompt; removed legacy PDF full-text injection (the passage block in the user turn is sufficient context) |
+| `scripts/reeval-csv.ts` | Synced to match `chat.ts`'s `buildSystemPrompt` exactly (was stale, causing misleading eval scores) |
+
+---
+
+### Improvement: Empty state copy update
+
+The ChatWindow placeholder now reads "Select any piece of text and start a conversation on the selected topic." with a second line hinting at the Cmd/Ctrl+Enter new-chat shortcut.
+
+| File | Change |
+|---|---|
+| `src/components/viewer/ChatWindow.tsx` | Updated empty-state paragraph; added `<br />` and shortcut hint line |
+
+**Sanity tests (all features above)**
+
+- TypeScript: `npx tsc --noEmit` — clean
+- Unit: `npx vitest run` — 23 files, 155 tests, all pass
+- E2E: `npx playwright test` — 10/10 pass
+
+---
+
 ## [Unreleased] — 2026-06-29
 
 ### Feature: Dark mode with persistent toggle
