@@ -11,8 +11,9 @@ primary_region = "bom"
 [build]
 
 [deploy]
-  # Applies committed migrations through the direct connection before release.
-  release_command = "prisma migrate deploy"
+  # Decodes the base64 connection strings then applies committed migrations
+  # through the direct connection before release.
+  release_command = "node prisma/migrate-deploy.mjs"
 
 # Non-secret runtime config. Secrets go via `fly secrets set`:
 #   DATABASE_URL, DIRECT_DATABASE_URL, AUTH_SECRET, APP_ENCRYPTION_KEY,

@@ -31,9 +31,10 @@ CDN, anonymous chat allowed behind a tight quota. Full plan in
 | `prisma/schema.prisma` | `provider` sqlite→postgresql, added `directUrl` (pooled URL for the app, direct for migrations) |
 | `prisma/migrations/*` | regenerated: removed SQLite migrations, added Postgres `20260702040531_init` |
 | `.env`, `.env.example`, `vitest.config.ts` | `DATABASE_URL`/`DIRECT_DATABASE_URL` for local Postgres (Homebrew `postgresql@16`) and documented for Supabase |
+| `src/server/db.ts`, `prisma/migrate-deploy.mjs` | production connection strings (which embed the DB password) are stored **base64-encoded** in `DATABASE_URL_B64`/`DIRECT_DATABASE_URL_B64` and decoded at runtime — no plaintext DB password in any env value or file; the Fly release step decodes then runs `migrate deploy` |
 
-Local dev/tests now run on a local Postgres; the Supabase schema is deployed via
-`prisma migrate deploy` (production URLs live only in Fly secrets, never committed).
+Local dev/tests run on a local (password-less) Postgres; production URLs are
+base64-encoded Fly secrets, decoded at runtime, never committed.
 
 **Storage — Cloudflare R2**
 
