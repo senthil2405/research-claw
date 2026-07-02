@@ -47,7 +47,11 @@ export function validateEnv(): void {
   if (isProd) {
     const missing: string[] = [];
     if (!process.env.AUTH_SECRET) missing.push("AUTH_SECRET");
-    if (!process.env.DATABASE_URL) missing.push("DATABASE_URL");
+    // Production supplies the connection string base64-encoded (DATABASE_URL_B64,
+    // decoded at runtime in src/server/db.ts); accept either form.
+    if (!process.env.DATABASE_URL && !process.env.DATABASE_URL_B64) {
+      missing.push("DATABASE_URL (or DATABASE_URL_B64)");
+    }
     // Dedicated encryption key so rotating AUTH_SECRET never bricks stored
     // BYOK keys (see src/server/crypto.ts).
     if (!process.env.APP_ENCRYPTION_KEY) missing.push("APP_ENCRYPTION_KEY");
