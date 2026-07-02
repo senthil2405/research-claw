@@ -7,6 +7,7 @@ import {
   listHighlights,
   NotFoundError,
 } from "@/server/services/chat";
+import { MAX_HIGHLIGHT_RECTS, MAX_SELECTED_TEXT_CHARS } from "@/lib/constants";
 import type { HighlightDTO, NormRect } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -46,6 +47,16 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   ) {
     return httpErrors.badRequest(
       "Expected { pageNumber: number, rects: array, selectedText: string }",
+    );
+  }
+  if (b.selectedText.length > MAX_SELECTED_TEXT_CHARS) {
+    return httpErrors.badRequest(
+      `selectedText must be at most ${MAX_SELECTED_TEXT_CHARS} characters`,
+    );
+  }
+  if (b.rects.length > MAX_HIGHLIGHT_RECTS) {
+    return httpErrors.badRequest(
+      `rects must contain at most ${MAX_HIGHLIGHT_RECTS} entries`,
     );
   }
 

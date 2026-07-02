@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { resolveOwner } from "@/server/owner";
 import { startLogin } from "@/server/claudeCli";
 import { json, httpErrors } from "@/server/http";
+import { rateLimit } from "@/server/ratelimit";
+import { RATE_WINDOW_MS, SECRET_RATE_PER_OWNER } from "@/lib/constants";
 import type { ClaudeLoginStart } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -20,6 +22,9 @@ async function requireUserId() {
 export async function POST(req: NextRequest) {
   const userId = await requireUserId();
   if (!userId) return httpErrors.unauthorized();
+
+  const rl = rateLimit(`claude-auth:${userId}`, SECRET_RATE_PER_OWNER, RATE_WINDOW_MS);
+  if (!rl.ok) return httpErrors.tooManyRequests(rl.retryAfterSec);
 
   let body: { console?: boolean } | null = null;
   try {

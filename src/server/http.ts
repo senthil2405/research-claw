@@ -17,5 +17,10 @@ export const httpErrors = {
   badRequest: (msg = "Bad request") => error(msg, 400),
   payloadTooLarge: (msg = "File too large") => error(msg, 413),
   unsupportedMediaType: (msg = "Unsupported media type") => error(msg, 415),
+  tooManyRequests: (retryAfterSec: number, msg = "Too many requests") =>
+    NextResponse.json(
+      { error: msg },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec) } },
+    ),
   serverError: (msg = "Internal server error") => error(msg, 500),
 };

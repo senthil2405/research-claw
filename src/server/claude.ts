@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { OwnerRef } from "@/server/owner";
 import { prisma } from "@/server/db";
 import { getAuthStatus, runCliChat, streamCliChat, userConfigDir } from "@/server/claudeCli";
+import { logWarn } from "@/server/logger";
 
 // Chat backend. Each logged-in user authorizes their OWN Anthropic account via
 // the Claude Code CLI (`claude auth login`); chat then runs `claude -p` against
@@ -56,7 +57,11 @@ export async function resolveClaudeAuth(owner: OwnerRef): Promise<ClaudeAuth> {
           where: { id: owner.userId },
           data: { claudeAuthorized: true, claudeAuthorizedAt: new Date() },
         })
-        .catch(() => {});
+        .catch((e) =>
+          logWarn("failed to re-sync claudeAuthorized flag", {
+            err: String(e),
+          }),
+        );
       return { mode: "account", configDir: userConfigDir(owner.userId) };
     }
   }

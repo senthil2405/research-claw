@@ -1,0 +1,53 @@
+# Fly.io config for Research Claw.
+# One always-on machine (the Claude CLI + in-memory state require a single
+# instance) with a persistent volume for the CLI's per-user config dirs.
+# Set the app name with `fly launch`/`fly apps create` and secrets with
+# `fly secrets set` (see below) — do NOT put secrets in this file.
+
+app = "research-claw"
+# Mumbai — same region as the Supabase project (ap-south-1) for low DB latency.
+primary_region = "bom"
+
+[build]
+
+[deploy]
+  # Applies committed migrations through the direct connection before release.
+  release_command = "prisma migrate deploy"
+
+# Non-secret runtime config. Secrets go via `fly secrets set`:
+#   DATABASE_URL, DIRECT_DATABASE_URL, AUTH_SECRET, APP_ENCRYPTION_KEY,
+#   AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET, ANTHROPIC_API_KEY,
+#   R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET, R2_ENDPOINT
+[env]
+  NODE_ENV = "production"
+  STORAGE_DRIVER = "r2"
+  CLAUDE_AUTH_DIR = "/data/claude-auth"
+  CLAUDE_MODEL = "claude-sonnet-4-6"
+  ALLOW_DEV_LOGIN = "false"
+  NEXT_PUBLIC_ALLOW_DEV_LOGIN = "false"
+  AUTH_URL = "https://research-claw.fly.dev"
+
+[[mounts]]
+  source = "rc_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  # Keep the single machine always running — SSE streams, the per-document lock,
+  # and CLI login state are all in-memory / single-instance.
+  auto_stop_machines = "off"
+  auto_start_machines = false
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "3s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/api/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  # 1 GB: the Next server plus a spawned `claude` CLI subprocess.
+  memory = "1gb"

@@ -1,12 +1,14 @@
 import { NextResponse } from "next/server";
 import { resolveOwner } from "@/server/owner";
 import { error, httpErrors, json } from "@/server/http";
+import { rateLimit } from "@/server/ratelimit";
 import {
   deleteUserApiKey,
   getUserKeyStatus,
   InvalidKeyError,
   setUserApiKey,
 } from "@/server/services/claudeKey";
+import { RATE_WINDOW_MS, SECRET_RATE_PER_OWNER } from "@/lib/constants";
 import type { ClaudeKeyStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -29,6 +31,9 @@ export async function GET() {
 export async function PUT(req: Request) {
   const userId = await requireUserId();
   if (!userId) return httpErrors.unauthorized();
+
+  const rl = rateLimit(`claude-key:${userId}`, SECRET_RATE_PER_OWNER, RATE_WINDOW_MS);
+  if (!rl.ok) return httpErrors.tooManyRequests(rl.retryAfterSec);
 
   let apiKey: unknown;
   try {

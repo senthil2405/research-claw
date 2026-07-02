@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import type { Document } from "@prisma/client";
 
 import { prisma } from "@/server/db";
-import { localFileStore } from "@/server/files/localStore";
+import { fileStore } from "@/server/files";
+import { logWarn } from "@/server/logger";
 import { getPageCount, getPdfTitle } from "@/server/pdf";
 import { ownerWhere, type OwnerRef } from "@/server/owner";
 import type { DocumentMeta } from "@/lib/types";
@@ -48,7 +49,7 @@ export async function createDocument(
   ]);
 
   const storedName = `${randomUUID()}.pdf`;
-  await localFileStore.save(storedName, input.buffer);
+  await fileStore.save(storedName, input.buffer);
 
   try {
     const doc = await prisma.document.create({
@@ -64,7 +65,14 @@ export async function createDocument(
     return toDocumentMeta(doc);
   } catch (err) {
     // Avoid leaving an orphan file when the DB write fails.
-    await localFileStore.delete(storedName).catch(() => {});
+    await fileStore
+      .delete(storedName)
+      .catch((e) =>
+        logWarn("orphan file cleanup failed after DB write error", {
+          storedName,
+          err: String(e),
+        }),
+      );
     throw err;
   }
 }
@@ -103,7 +111,14 @@ export async function deleteDocument(
   if (!doc) return false;
 
   // Best-effort file removal; the row is the source of truth.
-  await localFileStore.delete(doc.storedName).catch(() => {});
+  await fileStore
+    .delete(doc.storedName)
+    .catch((e) =>
+      logWarn("file removal failed during document delete", {
+        storedName: doc.storedName,
+        err: String(e),
+      }),
+    );
   await prisma.document.delete({ where: { id: doc.id } });
   return true;
 }

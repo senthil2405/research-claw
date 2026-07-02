@@ -12,6 +12,7 @@ import {
   withSessionLock,
 } from "@/server/claude";
 import { getOwnedDocument } from "@/server/services/documents";
+import { logLlmTurn } from "@/server/logger";
 import type { OwnerRef } from "@/server/owner";
 import type {
   ChatMessageDTO,
@@ -224,6 +225,16 @@ export async function streamMessage(
       onToken,
     );
 
+    logLlmTurn({
+      documentId,
+      highlightId,
+      mock: turnResult.mock,
+      inputTokens: turnResult.inputTokens,
+      outputTokens: turnResult.outputTokens,
+      durationMs: turnResult.durationMs,
+      ok: true,
+    });
+
     const turnIndex = await prisma.chatMessage.count({ where: { highlightId } });
     const userSeq = session.seqCounter;
 
@@ -299,6 +310,16 @@ export async function sendMessage(
       userMessage,
       resumeSessionId: session.claudeSessionId,
       auth,
+    });
+
+    logLlmTurn({
+      documentId,
+      highlightId,
+      mock: turnResult.mock,
+      inputTokens: turnResult.inputTokens,
+      outputTokens: turnResult.outputTokens,
+      durationMs: turnResult.durationMs,
+      ok: true,
     });
 
     // turnIndex and seqCounter are read inside the lock so no concurrent

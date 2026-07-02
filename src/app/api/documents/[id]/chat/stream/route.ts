@@ -2,7 +2,14 @@ import type { NextRequest } from "next/server";
 
 import { resolveOwner } from "@/server/owner";
 import { httpErrors } from "@/server/http";
+import { clientIp, limitAll, ownerKey } from "@/server/ratelimit";
 import { streamMessage, NotFoundError } from "@/server/services/chat";
+import {
+  CHAT_RATE_PER_IP,
+  CHAT_RATE_PER_OWNER,
+  MAX_QUESTION_CHARS,
+  RATE_WINDOW_MS,
+} from "@/lib/constants";
 import type { ChatStreamEvent } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -13,6 +20,12 @@ type RouteContext = { params: Promise<{ id: string }> };
 export async function POST(req: NextRequest, ctx: RouteContext) {
   const { id } = await ctx.params;
   const owner = await resolveOwner();
+
+  const rl = limitAll([
+    { key: `chat:${ownerKey(owner)}`, limit: CHAT_RATE_PER_OWNER, windowMs: RATE_WINDOW_MS },
+    { key: `chat-ip:${clientIp(req)}`, limit: CHAT_RATE_PER_IP, windowMs: RATE_WINDOW_MS },
+  ]);
+  if (!rl.ok) return httpErrors.tooManyRequests(rl.retryAfterSec);
 
   let body: unknown;
   try {
@@ -30,6 +43,11 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
   }
   if (typeof question !== "string") {
     return httpErrors.badRequest("question must be a string");
+  }
+  if (question.length > MAX_QUESTION_CHARS) {
+    return httpErrors.badRequest(
+      `question must be at most ${MAX_QUESTION_CHARS} characters`,
+    );
   }
 
   const encoder = new TextEncoder();

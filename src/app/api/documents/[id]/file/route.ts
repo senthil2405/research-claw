@@ -4,7 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { resolveOwner } from "@/server/owner";
 import { httpErrors } from "@/server/http";
-import { localFileStore } from "@/server/files/localStore";
+import { fileStore } from "@/server/files";
 import { getOwnedDocument } from "@/server/services/documents";
 
 export const runtime = "nodejs";
@@ -73,7 +73,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
 
   let size: number;
   try {
-    ({ size } = await localFileStore.stat(doc.storedName));
+    ({ size } = await fileStore.stat(doc.storedName));
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       return httpErrors.notFound();
@@ -101,7 +101,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
 
   if (parsed.kind === "range") {
     const { start, end } = parsed;
-    const nodeStream = localFileStore.createReadStream(doc.storedName, {
+    const nodeStream = fileStore.createReadStream(doc.storedName, {
       start,
       end,
     });
@@ -116,7 +116,7 @@ export async function GET(req: NextRequest, ctx: RouteContext) {
     });
   }
 
-  const nodeStream = localFileStore.createReadStream(doc.storedName);
+  const nodeStream = fileStore.createReadStream(doc.storedName);
   const webStream = Readable.toWeb(nodeStream) as unknown as ReadableStream;
   return new NextResponse(webStream, {
     status: 200,

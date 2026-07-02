@@ -2,8 +2,10 @@ import type { NextRequest } from "next/server";
 
 import { resolveOwner } from "@/server/owner";
 import { error, httpErrors, json } from "@/server/http";
+import { clientIp, limitAll, ownerKey } from "@/server/ratelimit";
 import { createDocument, listDocuments } from "@/server/services/documents";
 import { validatePdfUpload } from "@/lib/validation";
+import { RATE_WINDOW_MS, UPLOAD_RATE_PER_OWNER } from "@/lib/constants";
 import type { DocumentListResponse } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -11,6 +13,12 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   const owner = await resolveOwner();
+
+  const rl = limitAll([
+    { key: `upload:${ownerKey(owner)}`, limit: UPLOAD_RATE_PER_OWNER, windowMs: RATE_WINDOW_MS },
+    { key: `upload-ip:${clientIp(req)}`, limit: UPLOAD_RATE_PER_OWNER * 2, windowMs: RATE_WINDOW_MS },
+  ]);
+  if (!rl.ok) return httpErrors.tooManyRequests(rl.retryAfterSec);
 
   const form = await req.formData();
   const entry = form.get("file");

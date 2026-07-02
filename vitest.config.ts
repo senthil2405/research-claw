@@ -15,9 +15,11 @@ export default defineConfig({
     setupFiles: ["./vitest.setup.ts"],
     env: {
       NEXT_PUBLIC_ALLOW_DEV_LOGIN: "true",
-      // Point Prisma at the dev sqlite DB and force the mock Claude backend so
-      // the chat-service integration test runs without a subscription.
-      DATABASE_URL: `file:${resolve(__dirname, "prisma/dev.db")}`,
+      // Point Prisma at the local Postgres DB and force the mock Claude backend
+      // so the chat-service integration test runs without a subscription.
+      DATABASE_URL:
+        process.env.DATABASE_URL ??
+        "postgresql://sentinel@localhost:5432/research_claw?schema=public",
       CLAUDE_FORCE_MOCK: "true",
       // Deterministic AES-256 key (base64, 32 bytes) so crypto + key-service
       // tests don't depend on .env.local being loaded under Vitest.

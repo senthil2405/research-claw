@@ -3,6 +3,8 @@ import { prisma } from "@/server/db";
 import { resolveOwner } from "@/server/owner";
 import { submitLoginCode } from "@/server/claudeCli";
 import { json, error, httpErrors } from "@/server/http";
+import { rateLimit } from "@/server/ratelimit";
+import { RATE_WINDOW_MS, SECRET_RATE_PER_OWNER } from "@/lib/constants";
 import type { ClaudeAuthStatus } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -21,6 +23,9 @@ async function requireUserId() {
 export async function POST(req: NextRequest) {
   const userId = await requireUserId();
   if (!userId) return httpErrors.unauthorized();
+
+  const rl = rateLimit(`claude-auth:${userId}`, SECRET_RATE_PER_OWNER, RATE_WINDOW_MS);
+  if (!rl.ok) return httpErrors.tooManyRequests(rl.retryAfterSec);
 
   let body: { code?: string } | null = null;
   try {

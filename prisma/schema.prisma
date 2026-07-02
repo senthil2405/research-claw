@@ -5,8 +5,11 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled connection for the app (PgBouncer on Supabase; plain local Postgres in dev).
+  url       = env("DATABASE_URL")
+  // Direct (unpooled) connection used by `prisma migrate`. Same as url locally.
+  directUrl = env("DIRECT_DATABASE_URL")
 }
 
 // ---- Auth.js adapter models ----

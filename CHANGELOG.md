@@ -5,6 +5,72 @@ Each entry documents what changed, why, how it was built, and what tests gate it
 
 ---
 
+## [Unreleased] — 2026-07-02
+
+### Production readiness: deployment migration (DB, storage, hardening, CI)
+
+Groundwork to take the app live for public users. Decisions locked with the
+owner: keep the Claude Code CLI (single-instance; account-mode ToS/scale risk
+accepted for later), Supabase Postgres, Fly.io (1 VM + volume), Cloudflare R2 +
+CDN, anonymous chat allowed behind a tight quota. Full plan in
+`plans/.../part-a-…` (plan file).
+
+**Stage 0 — code prep**
+
+| File | Change |
+|---|---|
+| `next.config.ts` | `output: "standalone"` for a small runtime image |
+| `package.json` | added `typecheck` + `test:e2e` scripts |
+| `src/server/env.ts` + `src/instrumentation.ts` | boot-time env validation; **fails closed** in production if `ALLOW_DEV_LOGIN=true` or if `AUTH_SECRET`/`DATABASE_URL`/`APP_ENCRYPTION_KEY` are missing |
+| `src/lib/constants.ts`, chat + highlight routes | input size caps (`question` ≤16k, `selectedText` ≤20k, `rects` ≤500) |
+
+**Database — SQLite → PostgreSQL**
+
+| File | Change |
+|---|---|
+| `prisma/schema.prisma` | `provider` sqlite→postgresql, added `directUrl` (pooled URL for the app, direct for migrations) |
+| `prisma/migrations/*` | regenerated: removed SQLite migrations, added Postgres `20260702040531_init` |
+| `.env`, `.env.example`, `vitest.config.ts` | `DATABASE_URL`/`DIRECT_DATABASE_URL` for local Postgres (Homebrew `postgresql@16`) and documented for Supabase |
+
+Local dev/tests now run on a local Postgres; the Supabase schema is deployed via
+`prisma migrate deploy` (production URLs live only in Fly secrets, never committed).
+
+**Storage — Cloudflare R2**
+
+| File | Change |
+|---|---|
+| `src/server/files/r2Store.ts` | new S3-compatible `FileStore` (`@aws-sdk/client-s3`); HTTP range → S3 `Range`; ENOENT-shaped not-found so the file route is unchanged |
+| `src/server/files/index.ts` | factory selecting store by `STORAGE_DRIVER` (local default) |
+| `documents.ts`, file route | use the factory instead of `localFileStore` |
+
+**Hardening & observability**
+
+| File | Change |
+|---|---|
+| `src/server/ratelimit.ts` (+ test) | in-memory fixed-window limiter (single instance); per-owner + per-IP limits on chat/stream (strict), upload, and claude key/auth routes → 429 + `Retry-After` |
+| `src/server/logger.ts` | pino structured logs with redaction + allowlisted helpers; LLM-turn events (model/tokens/duration/mode), replaced silently-swallowed cleanup catches with warns |
+| `src/server/http.ts` | `tooManyRequests` helper |
+| `src/app/api/health/route.ts` | liveness probe (DB `SELECT 1`) for Fly + uptime checks |
+
+**Deployment artifacts**
+
+| File | Change |
+|---|---|
+| `Dockerfile`, `.dockerignore` | multi-stage standalone image; `claude` + `prisma` CLIs baked in for chat + release migrations |
+| `fly.toml` | 1 always-on machine (bom), volume for CLI config dirs, `/api/health` check, `release_command = prisma migrate deploy` |
+| `.github/workflows/ci.yml` | PR gate (lint + typecheck + vitest + playwright on a throwaway Postgres, mock LLM) → deploy to Fly on green `main` |
+
+**Not included (needs owner accounts/actions):** Fly launch + `fly secrets set`, R2 bucket + token, domain/Cloudflare DNS, Google OAuth prod client, Sentry DSN, rotating the shared Supabase password.
+
+**Sanity tests**
+
+- TypeScript: clean · Lint: 0 errors
+- Unit: `npx vitest run` — 24 files, **161** tests (added rate-limit suite), all pass on Postgres
+- E2E: `npx playwright test` — 10/10 pass on Postgres
+- Build: `npm run build` emits `.next/standalone/server.js`
+
+---
+
 ## [Unreleased] — 2026-07-01
 
 ### Performance: Faster model + streamed replies (beta-ready chat)
