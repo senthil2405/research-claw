@@ -22,9 +22,9 @@
 
 ## 🎬 Demo
 
-<video src="https://github.com/senthil2405/research-claw/raw/develop/docs/demo.webm" controls muted width="100%"></video>
+![Research Claw demo](docs/demo.gif)
 
-> ▶️ If the player doesn't load inline, **[watch the demo](https://github.com/senthil2405/research-claw/raw/develop/docs/demo.webm)**.
+> ▶️ Sped up for preview — **[watch the full walkthrough with audio](https://github.com/senthil2405/research-claw/raw/develop/docs/demo.webm)**.
 
 Drag in a PDF → it renders instantly → select a sentence → a chat icon floats over the selection → ask *"explain this"* → a chat window opens anchored to the highlight and streams a Markdown + LaTeX answer.
 
