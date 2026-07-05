@@ -32,6 +32,10 @@ model User {
   claudeAuthorized   Boolean   @default(false)
   claudeAuthorizedAt DateTime?
 
+  // Billing seam. "free" = subject to the monthly token budget; "paid"/"unlimited"
+  // bypass the quota. The payment flow that flips this is deferred.
+  plan String @default("free")
+
   accounts  Account[]
   sessions  Session[]
   documents Document[]
@@ -111,6 +115,8 @@ model ChatSession {
   claudeSessionId String?
   cwd            String?
   seqCounter     Int      @default(0)
+  // Cumulative billable tokens spent chatting about this PDF (all windows).
+  tokensUsed     Int      @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -127,6 +133,8 @@ model Highlight {
   pageNumber   Int
   rects        String
   selectedText String
+  // Cumulative billable tokens spent chatting in this window.
+  tokensUsed   Int      @default(0)
   createdAt    DateTime @default(now())
 
   document Document      @relation(fields: [documentId], references: [id], onDelete: Cascade)
@@ -157,4 +165,37 @@ model ChatMessage {
 
   @@index([sessionId, seq])
   @@index([highlightId, turnIndex])
+}
+
+// ---- Usage metering + billing ----
+// One current-period counter per owner. `ownerKey` is "u:<userId>" for a
+// logged-in account or "a:<anonId>" for an anonymous browser session (see
+// ownerKey() in src/server/ratelimit.ts). `consumed` counts BILLABLE tokens
+// (completion + uncached prompt) this period; the period resets lazily on the
+// first request of a new calendar month (accounts only — anon trials are
+// one-time and never reset). Not an Auth.js model.
+model UsageMeter {
+  ownerKey    String   @id
+  consumed    Int      @default(0)
+  periodStart DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Append-only per-turn usage ledger for auditing and future billing. Records
+// the raw token breakdown plus the real `costCredits` OpenRouter charged, so we
+// can reconcile spend and later price plans. `ownerKey` matches UsageMeter.
+model UsageEvent {
+  id               String   @id @default(cuid())
+  ownerKey         String
+  documentId       String?
+  model            String
+  promptTokens     Int
+  cachedTokens     Int
+  completionTokens Int
+  effectiveTokens  Int
+  costCredits      Float
+  createdAt        DateTime @default(now())
+
+  @@index([ownerKey, createdAt])
 }

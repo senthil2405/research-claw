@@ -24,12 +24,17 @@ vi.mock("@/server/auth", () => ({
 import { prisma } from "@/server/db";
 import { createDocument, deleteDocument } from "@/server/services/documents";
 import {
+  ChatLimitError,
   NotFoundError,
   createHighlight,
   listHighlights,
   listMessages,
   sendMessage,
 } from "@/server/services/chat";
+import {
+  MAX_TOKENS_PER_DOCUMENT,
+  MAX_TOKENS_PER_WINDOW,
+} from "@/lib/constants";
 import type { OwnerRef } from "@/server/owner";
 
 const owner: OwnerRef = { anonId: `vitest-anon-${Date.now()}` };
@@ -88,7 +93,7 @@ describe("chat service (mock Claude, dev DB)", () => {
     expect(turn1.userMessage.content).toBe("First question?");
     expect(turn1.userMessage.highlightText).toBe("passage one");
     expect(turn1.assistantMessage.role).toBe("assistant");
-    expect(turn1.assistantMessage.content).toContain("Mock Claude");
+    expect(turn1.assistantMessage.content).toContain("Mock LLM");
     // First turn: user seq 0, assistant seq 1.
     expect(turn1.userMessage.seq).toBe(0);
     expect(turn1.assistantMessage.seq).toBe(1);
@@ -147,5 +152,38 @@ describe("chat service (mock Claude, dev DB)", () => {
     await expect(
       sendMessage(owner, documentId, "definitely-not-a-real-highlight", "hi"),
     ).rejects.toBeInstanceOf(NotFoundError);
+  });
+
+  // Cap tests run last: the doc-cap test maxes out this document's session.
+  it("blocks a window that has hit its per-window token cap", async () => {
+    const win = await createHighlight(owner, documentId, {
+      pageNumber: 1,
+      rects: [],
+      selectedText: "window cap",
+    });
+    await prisma.highlight.update({
+      where: { id: win.id },
+      data: { tokensUsed: MAX_TOKENS_PER_WINDOW },
+    });
+    await expect(
+      sendMessage(owner, documentId, win.id, "one more?"),
+    ).rejects.toBeInstanceOf(ChatLimitError);
+  });
+
+  it("blocks the whole PDF once the per-document cap is reached", async () => {
+    const win = await createHighlight(owner, documentId, {
+      pageNumber: 1,
+      rects: [],
+      selectedText: "doc cap",
+    });
+    // Seed a turn so the ChatSession exists, then max it out.
+    await sendMessage(owner, documentId, win.id, "seed");
+    await prisma.chatSession.update({
+      where: { documentId },
+      data: { tokensUsed: MAX_TOKENS_PER_DOCUMENT },
+    });
+    await expect(
+      sendMessage(owner, documentId, win.id, "again?"),
+    ).rejects.toBeInstanceOf(ChatLimitError);
   });
 });

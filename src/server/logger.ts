@@ -33,8 +33,11 @@ export function logLlmTurn(e: {
   documentId: string;
   highlightId: string;
   mock: boolean;
+  model?: string;
   inputTokens: number | null;
   outputTokens: number | null;
+  cachedTokens?: number | null;
+  costCredits?: number | null;
   durationMs: number | null;
   ok: boolean;
 }): void {

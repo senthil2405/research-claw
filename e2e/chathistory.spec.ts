@@ -58,7 +58,7 @@ test("chat history panel lists chats and reopens them; go-to-top is present", as
   const composer = dialog.getByRole("textbox", { name: "Message" });
   await composer.fill("What is this passage about?");
   await composer.press("Enter");
-  await expect(dialog.getByText(/Mock Claude/i)).toBeVisible({
+  await expect(dialog.getByText(/Mock LLM/i)).toBeVisible({
     timeout: 20_000,
   });
   await dialog.getByRole("button", { name: "Close chat window" }).click();

@@ -14,9 +14,25 @@ export interface MarkdownProps {
 }
 
 /**
+ * Normalize LaTeX delimiters to the dollar form remark-math understands.
+ * `remark-math` only recognizes `$…$` / `$$…$$`, but many models (Gemini,
+ * DeepSeek, …) emit `\( … \)` (inline) and `\[ … \]` (display). Without this, remark treats
+ * `\(` as an escaped paren and the math is never rendered. Function replacements
+ * avoid `$`'s special meaning in replacement strings.
+ */
+function normalizeMathDelimiters(md: string): string {
+  return md
+    .replace(/\\\[/g, () => "$$")
+    .replace(/\\\]/g, () => "$$")
+    .replace(/\\\(/g, () => "$")
+    .replace(/\\\)/g, () => "$");
+}
+
+/**
  * Renders assistant chat output as GitHub-flavored Markdown with LaTeX math
- * (inline `$…$` and block `$$…$$` via KaTeX). Raw HTML is NOT enabled, so model
- * output can't inject markup. Memoized — re-renders only when content changes.
+ * (inline `$…$` and block `$$…$$` via KaTeX; `\(…\)` / `\[…\]` are normalized to
+ * these first). Raw HTML is NOT enabled, so model output can't inject markup.
+ * Memoized — re-renders only when content changes.
  */
 export const Markdown = memo(function Markdown({ content }: MarkdownProps) {
   return (
@@ -30,7 +46,7 @@ export const Markdown = memo(function Markdown({ content }: MarkdownProps) {
           ),
         }}
       >
-        {content}
+        {normalizeMathDelimiters(content)}
       </ReactMarkdown>
     </div>
   );

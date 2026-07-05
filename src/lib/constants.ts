@@ -33,6 +33,25 @@ export const UPLOAD_RATE_PER_OWNER = 12;
 /** Secret-handling routes (claude key/auth) limits per minute. */
 export const SECRET_RATE_PER_OWNER = 12;
 
+/**
+ * Safety cap on replayed chat history (characters, ~4 chars/token → ~50k
+ * tokens). Bounds a COLD-cache turn (idle past the provider's cache TTL) so a
+ * single shared-history replay can't blow the monthly token budget. Well under
+ * Gemini's 1M context; real threads rarely reach it.
+ */
+export const MAX_REPLAY_CHARS = 200_000;
+
+/** Hard per-resource chat caps (cumulative billable tokens). */
+export const MAX_TOKENS_PER_WINDOW = 50_000;
+export const MAX_TOKENS_PER_DOCUMENT = 500_000;
+
+/** Chat token budgets (billable tokens = completion + uncached prompt). */
+// Logged-in accounts: renews each calendar month.
+export const FREE_MONTHLY_TOKENS = 100_000;
+// Anonymous visitors: a one-time trial (metered by the rc_anon cookie), after
+// which they must sign in to get the monthly budget.
+export const ANON_TRIAL_TOKENS = 10_000;
+
 /** Whether the dev-only mock login is enabled. */
 export const ALLOW_DEV_LOGIN = process.env.ALLOW_DEV_LOGIN === "true";
 

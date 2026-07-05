@@ -17,6 +17,8 @@ import { windowTopBoundary } from "@/components/viewer/placement";
 import { useChatMessages } from "@/hooks/useChatMessages";
 import { useStreamChatMessage } from "@/hooks/useStreamChatMessage";
 import { useDeleteHighlight } from "@/hooks/useDeleteHighlight";
+import { useAuth } from "@/hooks/useAuth";
+import { signInGoogle } from "@/api/auth";
 import { Markdown } from "./Markdown";
 import type { ChatMessageDTO } from "@/lib/types";
 import styles from "./ChatWindow.module.css";
@@ -79,6 +81,14 @@ export default function ChatWindow({
   const { messages, isFetched } = useChatMessages(documentId, highlightId);
   const sendMutation = useStreamChatMessage(documentId, highlightId);
   const deleteHighlight = useDeleteHighlight(documentId);
+  const { isAuthenticated } = useAuth();
+  // The anon monthly-trial block is the only case where signing in helps; that
+  // message literally says "Sign in". Per-window / per-PDF caps and the paid
+  // monthly block don't offer it — they just show the message.
+  const suggestSignIn =
+    !!sendMutation.error &&
+    !isAuthenticated &&
+    /sign in/i.test(sendMutation.error);
 
   const handleClose = useCallback(() => {
     if (isFetched && messages.length === 0 && !sendMutation.isPending) {
@@ -467,6 +477,21 @@ export default function ChatWindow({
           </div>
         ) : null}
       </div>
+
+      {sendMutation.error ? (
+        <div className={styles.errorBanner} role="alert">
+          <span className={styles.errorText}>{sendMutation.error}</span>
+          {suggestSignIn ? (
+            <button
+              type="button"
+              className={styles.bannerAction}
+              onClick={() => void signInGoogle()}
+            >
+              Sign in
+            </button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className={styles.composer}>
         <textarea

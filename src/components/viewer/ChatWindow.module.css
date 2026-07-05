@@ -298,6 +298,41 @@
   }
 }
 
+/* ---- Budget / error banner ---- */
+.errorBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 10px 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-lg);
+  background: var(--danger-soft);
+}
+
+.errorText {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--danger);
+}
+
+.bannerAction {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.bannerAction:hover {
+  filter: brightness(1.05);
+}
+
 /* ---- Composer ---- */
 .composer {
   display: flex;

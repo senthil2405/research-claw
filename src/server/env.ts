@@ -21,6 +21,13 @@ const schema = z.object({
   ALLOW_DEV_LOGIN: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
   MAX_UPLOAD_BYTES: z.coerce.number().int().positive().optional(),
+  // Gemini (Google AI Developer API) is the live chat backend. The key is
+  // required in production; in dev/test an empty key (or LLM_FORCE_MOCK=true)
+  // falls back to the mock.
+  GEMINI_API_KEY: z.string().optional(),
+  GEMINI_MODEL: z.string().optional(),
+  GEMINI_BASE_URL: z.string().optional(),
+  LLM_FORCE_MOCK: z.string().optional(),
 });
 
 export function validateEnv(): void {
@@ -55,6 +62,11 @@ export function validateEnv(): void {
     // Dedicated encryption key so rotating AUTH_SECRET never bricks stored
     // BYOK keys (see src/server/crypto.ts).
     if (!process.env.APP_ENCRYPTION_KEY) missing.push("APP_ENCRYPTION_KEY");
+    // The live chat backend needs a real Gemini key in production (unless the
+    // deploy explicitly opts into the mock via LLM_FORCE_MOCK).
+    if (!process.env.GEMINI_API_KEY && process.env.LLM_FORCE_MOCK !== "true") {
+      missing.push("GEMINI_API_KEY");
+    }
     if (missing.length > 0) {
       throw new Error(
         `Missing required production environment variables: ${missing.join(", ")}`,

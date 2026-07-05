@@ -90,7 +90,7 @@ test("chat flow: select -> ask -> minimize -> reopen -> persist", async ({
   await expect(
     dialog.getByText("What is this passage about?").first(),
   ).toBeVisible({ timeout: 10_000 });
-  await expect(dialog.getByText(/Mock Claude/i)).toBeVisible({
+  await expect(dialog.getByText(/Mock LLM/i)).toBeVisible({
     timeout: 20_000,
   });
 
@@ -115,7 +115,7 @@ test("chat flow: select -> ask -> minimize -> reopen -> persist", async ({
   await expect(
     reopened.getByText("What is this passage about?").first(),
   ).toBeVisible();
-  await expect(reopened.getByText(/Mock Claude/i).first()).toBeVisible();
+  await expect(reopened.getByText(/Mock LLM/i).first()).toBeVisible();
 
   // ---- 6. Reload -> highlight persists; reopening shows prior messages ----
   await page.reload();
@@ -136,7 +136,7 @@ test("chat flow: select -> ask -> minimize -> reopen -> persist", async ({
   await expect(
     afterReload.getByText("What is this passage about?").first(),
   ).toBeVisible({ timeout: 10_000 });
-  await expect(afterReload.getByText(/Mock Claude/i).first()).toBeVisible();
+  await expect(afterReload.getByText(/Mock LLM/i).first()).toBeVisible();
 });
 
 test("closing a chat with no messages removes its highlight", async ({

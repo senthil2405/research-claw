@@ -33,6 +33,15 @@ vi.mock("@/hooks/useDeleteHighlight", () => ({
   useDeleteHighlight: () => ({ mutate: mockDeleteMutate, isPending: false }),
 }));
 
+vi.mock("@/hooks/useAuth", () => ({
+  useAuth: () => ({
+    user: null,
+    isLoading: false,
+    isAuthenticated: false,
+    refetch: () => {},
+  }),
+}));
+
 // Imported AFTER the mocks are declared.
 import ChatWindow from "@/components/viewer/ChatWindow";
 

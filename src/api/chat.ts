@@ -81,7 +81,16 @@ export async function* streamChatMessage(
   );
 
   if (!response.ok || !response.body) {
-    throw new Error("Stream request failed: " + response.status);
+    // Surface the server's { error } message (e.g. a 402 budget block) so the
+    // UI can show it, rather than a bare status code.
+    let message = "Stream request failed: " + response.status;
+    try {
+      const body = (await response.json()) as { error?: string };
+      if (body?.error) message = body.error;
+    } catch {
+      /* non-JSON body — keep the status fallback */
+    }
+    throw new Error(message);
   }
 
   const reader = response.body.getReader();

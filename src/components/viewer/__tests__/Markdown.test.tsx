@@ -35,6 +35,19 @@ describe("Markdown", () => {
     expect(container.querySelector(".katex")).toBeTruthy();
   });
 
+  it("renders backslash-delimited math \\(…\\) and \\[…\\] (e.g. Gemini output)", () => {
+    const { container } = render(
+      <Markdown
+        content={
+          "inline \\(W + BA\\) and block:\n\n\\[\\frac{a}{b} = c\\]\n\ndone"
+        }
+      />,
+    );
+    // Both delimiter styles normalize to $-math and reach KaTeX.
+    expect(container.querySelectorAll(".katex").length).toBeGreaterThanOrEqual(2);
+    expect(container.querySelector(".mfrac")).toBeTruthy();
+  });
+
   it("does not render raw HTML (XSS safe)", () => {
     const { container } = render(
       <Markdown content={"<script>alert(1)</script> safe"} />,

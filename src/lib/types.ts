@@ -97,6 +97,19 @@ export interface ClaudeKeyStatus {
   updatedAt: string | null;
 }
 
+/** Chat token budget status for the current owner (user or anon). */
+export interface UsageStatus {
+  used: number;
+  /** null when the plan is unlimited. */
+  limit: number | null;
+  remaining: number | null;
+  unlimited: boolean;
+  /** End of the current period (ISO); null for anon / unlimited. */
+  periodEnd: string | null;
+  /** "free" | "paid" | "unlimited" | "anon". */
+  plan: string;
+}
+
 /** Whether the user has authorized their Claude account (`claude auth login`). */
 export interface ClaudeAuthStatus {
   connected: boolean;

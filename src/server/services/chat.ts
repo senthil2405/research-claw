@@ -5,15 +5,22 @@ import type {
 } from "@prisma/client";
 
 import { prisma } from "@/server/db";
+import { withSessionLock } from "@/server/claude";
 import {
-  resolveClaudeAuth,
-  runClaudeTurn,
-  runClaudeTurnStreaming,
-  withSessionLock,
-} from "@/server/claude";
+  llmModel,
+  runLlmTurn,
+  streamLlmTurn,
+  type LlmMessage,
+} from "@/server/llm";
+import { billableTokens, recordUsage } from "@/server/services/usage";
 import { getOwnedDocument } from "@/server/services/documents";
 import { logLlmTurn } from "@/server/logger";
 import type { OwnerRef } from "@/server/owner";
+import {
+  MAX_REPLAY_CHARS,
+  MAX_TOKENS_PER_DOCUMENT,
+  MAX_TOKENS_PER_WINDOW,
+} from "@/lib/constants";
 import type {
   ChatMessageDTO,
   CreateHighlightInput,
@@ -31,6 +38,42 @@ export class NotFoundError extends Error {
   constructor(message = "Not found") {
     super(message);
     this.name = "NotFoundError";
+  }
+}
+
+/**
+ * Thrown when a per-window or per-document token cap is reached. Routes map it
+ * to a 402 so the client shows the budget banner.
+ */
+export class ChatLimitError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ChatLimitError";
+  }
+}
+
+/**
+ * Enforce the per-window (highlight) and per-PDF (session) token caps. Read
+ * inside the per-document lock so the counters are fresh. Blocks the NEXT turn
+ * once a cap is reached (the turn that crosses it is allowed to finish).
+ */
+async function assertUnderCaps(
+  highlightId: string,
+  sessionTokensUsed: number,
+): Promise<void> {
+  if (sessionTokensUsed >= MAX_TOKENS_PER_DOCUMENT) {
+    throw new ChatLimitError(
+      `This PDF has reached its ${MAX_TOKENS_PER_DOCUMENT.toLocaleString()}-token chat limit.`,
+    );
+  }
+  const hl = await prisma.highlight.findUnique({
+    where: { id: highlightId },
+    select: { tokensUsed: true },
+  });
+  if ((hl?.tokensUsed ?? 0) >= MAX_TOKENS_PER_WINDOW) {
+    throw new ChatLimitError(
+      `This chat has reached its ${MAX_TOKENS_PER_WINDOW.toLocaleString()}-token limit. Start a new highlight to continue.`,
+    );
   }
 }
 
@@ -188,6 +231,53 @@ function buildUserMessage(selectedText: string, question: string, paperTitle?: s
   return q ? `${passageBlock}\n\n${q}` : passageBlock;
 }
 
+/**
+ * Rebuild the conversation to send to the LLM. OpenRouter has no session
+ * resume, so we replay the WHOLE document's history (all windows share one
+ * session, like the old Claude CLI) ordered by the global `seq`, then append the
+ * new user message. Ordering by seq keeps the prefix append-only so Gemini's
+ * automatic implicit prefix cache hits — the repeated history bills at the
+ * cached rate and we meter only the uncached remainder (services/usage.ts).
+ * Prior user turns are re-wrapped with their own passage (highlightText) so each
+ * question stays tied to the passage it was about across windows. `capHistory`
+ * bounds a cold-cache turn so it can't bill a runaway prompt.
+ */
+async function buildThreadMessages(
+  sessionId: string,
+  newUserMessage: string,
+): Promise<LlmMessage[]> {
+  const prior = await prisma.chatMessage.findMany({
+    where: { sessionId },
+    orderBy: { seq: "asc" },
+    select: { role: true, content: true, highlightText: true },
+  });
+  const messages: LlmMessage[] = prior.map((m) =>
+    m.role === "assistant"
+      ? { role: "assistant", content: m.content }
+      : { role: "user", content: buildUserMessage(m.highlightText ?? "", m.content) },
+  );
+  messages.push({ role: "user", content: newUserMessage });
+  return capHistory(messages);
+}
+
+/**
+ * Keep the most-recent messages within MAX_REPLAY_CHARS (the current message is
+ * always kept), then drop any leading assistant turns so the replay starts on a
+ * user (or system, added later) message.
+ */
+function capHistory(messages: LlmMessage[]): LlmMessage[] {
+  let total = 0;
+  const kept: LlmMessage[] = [];
+  for (let i = messages.length - 1; i >= 0; i--) {
+    total += messages[i].content.length;
+    if (total > MAX_REPLAY_CHARS && kept.length > 0) break;
+    kept.push(messages[i]);
+  }
+  kept.reverse();
+  while (kept.length > 1 && kept[0].role === "assistant") kept.shift();
+  return kept;
+}
+
 // ---- Stream a message -----------------------------------------------------
 
 /**
@@ -209,19 +299,14 @@ export async function streamMessage(
   const paperTitle = doc.title ?? null;
   const systemPrompt = buildSystemPrompt(paperTitle ?? doc.filename.replace(/\.pdf$/i, ""));
   const userMessage = buildUserMessage(highlight.selectedText, question, paperTitle);
-  const auth = await resolveClaudeAuth(owner);
 
   return withSessionLock(documentId, async () => {
     const session = await getOrCreateSession(documentId);
+    await assertUnderCaps(highlightId, session.tokensUsed);
+    const messages = await buildThreadMessages(session.id, userMessage);
 
-    const turnResult = await runClaudeTurnStreaming(
-      {
-        documentId,
-        systemPrompt,
-        userMessage,
-        resumeSessionId: session.claudeSessionId,
-        auth,
-      },
+    const turnResult = await streamLlmTurn(
+      { system: systemPrompt, messages },
       onToken,
     );
 
@@ -229,10 +314,23 @@ export async function streamMessage(
       documentId,
       highlightId,
       mock: turnResult.mock,
-      inputTokens: turnResult.inputTokens,
-      outputTokens: turnResult.outputTokens,
+      model: llmModel(),
+      inputTokens: turnResult.promptTokens,
+      outputTokens: turnResult.completionTokens,
+      cachedTokens: turnResult.cachedTokens,
+      costCredits: turnResult.costCredits,
       durationMs: turnResult.durationMs,
       ok: true,
+    });
+
+    const turnEffective = billableTokens(turnResult);
+    await recordUsage(owner, {
+      documentId,
+      model: llmModel(),
+      promptTokens: turnResult.promptTokens,
+      cachedTokens: turnResult.cachedTokens,
+      completionTokens: turnResult.completionTokens,
+      costCredits: turnResult.costCredits,
     });
 
     const turnIndex = await prisma.chatMessage.count({ where: { highlightId } });
@@ -259,17 +357,21 @@ export async function streamMessage(
           highlightText: null,
           turnIndex: turnIndex + 1,
           seq: userSeq + 1,
-          inputTokens: turnResult.inputTokens,
-          outputTokens: turnResult.outputTokens,
+          inputTokens: turnResult.promptTokens,
+          outputTokens: turnResult.completionTokens,
           durationMs: turnResult.durationMs,
         },
       }),
       prisma.chatSession.update({
         where: { id: session.id },
         data: {
-          claudeSessionId: turnResult.sessionId,
           seqCounter: session.seqCounter + 2,
+          tokensUsed: { increment: turnEffective },
         },
+      }),
+      prisma.highlight.update({
+        where: { id: highlightId },
+        data: { tokensUsed: { increment: turnEffective } },
       }),
     ]);
 
@@ -294,32 +396,38 @@ export async function sendMessage(
   const paperTitle = doc.title ?? null;
   const systemPrompt = buildSystemPrompt(paperTitle ?? doc.filename.replace(/\.pdf$/i, ""));
   const userMessage = buildUserMessage(highlight.selectedText, question, paperTitle);
-  const auth = await resolveClaudeAuth(owner);
 
   // The entire critical section — session read, user turn, and the DB
   // transaction that writes messages + advances the seq counter — runs inside
   // the per-document lock so seqCounter and turnIndex reads are always fresh.
   return withSessionLock(documentId, async () => {
     const session = await getOrCreateSession(documentId);
+    await assertUnderCaps(highlightId, session.tokensUsed);
+    const messages = await buildThreadMessages(session.id, userMessage);
 
-    // The full PDF text is already in the system prompt, so Claude has context
-    // from the very first message — no separate priming turn needed.
-    const turnResult = await runClaudeTurn({
-      documentId,
-      systemPrompt,
-      userMessage,
-      resumeSessionId: session.claudeSessionId,
-      auth,
-    });
+    const turnResult = await runLlmTurn({ system: systemPrompt, messages });
 
     logLlmTurn({
       documentId,
       highlightId,
       mock: turnResult.mock,
-      inputTokens: turnResult.inputTokens,
-      outputTokens: turnResult.outputTokens,
+      model: llmModel(),
+      inputTokens: turnResult.promptTokens,
+      outputTokens: turnResult.completionTokens,
+      cachedTokens: turnResult.cachedTokens,
+      costCredits: turnResult.costCredits,
       durationMs: turnResult.durationMs,
       ok: true,
+    });
+
+    const turnEffective = billableTokens(turnResult);
+    await recordUsage(owner, {
+      documentId,
+      model: llmModel(),
+      promptTokens: turnResult.promptTokens,
+      cachedTokens: turnResult.cachedTokens,
+      completionTokens: turnResult.completionTokens,
+      costCredits: turnResult.costCredits,
     });
 
     // turnIndex and seqCounter are read inside the lock so no concurrent
@@ -348,17 +456,21 @@ export async function sendMessage(
           highlightText: null,
           turnIndex: turnIndex + 1,
           seq: userSeq + 1,
-          inputTokens: turnResult.inputTokens,
-          outputTokens: turnResult.outputTokens,
+          inputTokens: turnResult.promptTokens,
+          outputTokens: turnResult.completionTokens,
           durationMs: turnResult.durationMs,
         },
       }),
       prisma.chatSession.update({
         where: { id: session.id },
         data: {
-          claudeSessionId: turnResult.sessionId,
           seqCounter: session.seqCounter + 2,
+          tokensUsed: { increment: turnEffective },
         },
+      }),
+      prisma.highlight.update({
+        where: { id: highlightId },
+        data: { tokensUsed: { increment: turnEffective } },
       }),
     ]);
 

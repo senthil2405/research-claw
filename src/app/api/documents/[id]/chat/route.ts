@@ -3,7 +3,8 @@ import type { NextRequest } from "next/server";
 import { resolveOwner } from "@/server/owner";
 import { httpErrors, json } from "@/server/http";
 import { clientIp, limitAll, ownerKey } from "@/server/ratelimit";
-import { sendMessage, NotFoundError } from "@/server/services/chat";
+import { sendMessage, NotFoundError, ChatLimitError } from "@/server/services/chat";
+import { checkQuota, quotaExceededMessage } from "@/server/services/usage";
 import {
   CHAT_RATE_PER_IP,
   CHAT_RATE_PER_OWNER,
@@ -26,6 +27,9 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     { key: `chat-ip:${clientIp(req)}`, limit: CHAT_RATE_PER_IP, windowMs: RATE_WINDOW_MS },
   ]);
   if (!rl.ok) return httpErrors.tooManyRequests(rl.retryAfterSec);
+
+  const quota = await checkQuota(owner);
+  if (!quota.ok) return httpErrors.paymentRequired(quotaExceededMessage(quota));
 
   let body: unknown;
   try {
@@ -55,6 +59,7 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     return json<SendMessageResponse>(result);
   } catch (err) {
     if (err instanceof NotFoundError) return httpErrors.notFound();
+    if (err instanceof ChatLimitError) return httpErrors.paymentRequired(err.message);
     const msg = err instanceof Error ? err.message : "Internal server error";
     return httpErrors.serverError(msg);
   }

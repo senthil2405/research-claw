@@ -37,6 +37,9 @@ export function useStreamChatMessage(documentId: string, highlightId: string) {
 
   const [isPending, setIsPending] = useState(false);
   const [streamingText, setStreamingText] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // Captured in run()'s catch; surfaced when the abort is finalized in tick().
+  const errorRef = useRef<string | null>(null);
 
   // Guards against double-submit; set synchronously in mutate before any await.
   const activeRef = useRef(false);
@@ -74,6 +77,7 @@ export function useStreamChatMessage(documentId: string, highlightId: string) {
       if (abortedRef.current) {
         finalizedRef.current = true;
         queryClient.setQueryData<ChatMessageDTO[]>(queryKey, previousRef.current);
+        if (errorRef.current) setError(errorRef.current);
         cleanup();
         return;
       }
@@ -171,7 +175,9 @@ export function useStreamChatMessage(documentId: string, highlightId: string) {
         }
         // Stream closed without a done event → treat as abort.
         if (!doneRef.current) abortedRef.current = true;
-      } catch {
+      } catch (e) {
+        // Capture the message (e.g. a 402 budget block) to show a banner.
+        errorRef.current = e instanceof Error ? e.message : "Something went wrong.";
         abortedRef.current = true;
       }
     },
@@ -188,6 +194,8 @@ export function useStreamChatMessage(documentId: string, highlightId: string) {
       doneRef.current = null;
       abortedRef.current = false;
       finalizedRef.current = false;
+      errorRef.current = null;
+      setError(null);
       setIsPending(true);
       setStreamingText("");
       void run(question);
@@ -195,5 +203,5 @@ export function useStreamChatMessage(documentId: string, highlightId: string) {
     [run],
   );
 
-  return { mutate, isPending, streamingText };
+  return { mutate, isPending, streamingText, error };
 }

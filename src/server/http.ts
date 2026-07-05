@@ -15,6 +15,7 @@ export const httpErrors = {
   unauthorized: () => error("Unauthorized", 401),
   notFound: () => error("Not found", 404),
   badRequest: (msg = "Bad request") => error(msg, 400),
+  paymentRequired: (msg = "Payment required") => error(msg, 402),
   payloadTooLarge: (msg = "File too large") => error(msg, 413),
   unsupportedMediaType: (msg = "Unsupported media type") => error(msg, 415),
   tooManyRequests: (retryAfterSec: number, msg = "Too many requests") =>

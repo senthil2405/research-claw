@@ -21,6 +21,8 @@ export default defineConfig({
         process.env.DATABASE_URL ??
         "postgresql://sentinel@localhost:5432/research_claw?schema=public",
       CLAUDE_FORCE_MOCK: "true",
+      // Force the OpenRouter transport into its offline mock (no network / key).
+      LLM_FORCE_MOCK: "true",
       // Deterministic AES-256 key (base64, 32 bytes) so crypto + key-service
       // tests don't depend on .env.local being loaded under Vitest.
       APP_ENCRYPTION_KEY: "MIrtAMfkd4iN1G+2QLZkskbthFQoN9D2gRwqN2A8Ewc=",

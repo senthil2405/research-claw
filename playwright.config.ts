@@ -23,7 +23,7 @@ export default defineConfig({
     // Force mock Claude so E2E is deterministic and never consults the dev
     // machine's real global `claude` login (which would flip auth status to
     // connected). Chat stays on the mock; auth status reports not-connected.
-    command: "CLAUDE_FORCE_MOCK=true npm run dev",
+    command: "CLAUDE_FORCE_MOCK=true LLM_FORCE_MOCK=true npm run dev",
     url: "http://localhost:3000",
     reuseExistingServer: true,
     timeout: 120_000,
