@@ -175,4 +175,10 @@ prisma/                      # schema + migrations
 
 ---
 
+## 📄 License
+
+Licensed under the [Apache License 2.0](LICENSE) — © 2026 Senthil Kannan. See [`NOTICE`](NOTICE).
+
+---
+
 <p align="center"><sub>Built with Next.js, Prisma, and Gemini — a warm place to read cold papers.</sub></p>
