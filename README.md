@@ -22,17 +22,11 @@
 
 ## 🎬 Demo
 
-> **A short walkthrough will live here.** Record a screen capture of the flow below and drop it in — GitHub renders `.mp4`/`.mov` uploaded straight into the README, or commit a GIF at `docs/demo.gif` and reference it.
+<video src="https://github.com/senthil2405/research-claw/raw/develop/docs/demo.webm" controls muted width="100%"></video>
 
-<!--
-  To embed:
-  1. Open this README on GitHub → edit → drag your recording in; GitHub hosts it and inserts a
-     https://github.com/senthil2405/research-claw/assets/... link. Paste that here.
-  2. Or add docs/demo.gif and uncomment:
-  ![Research Claw demo](docs/demo.gif)
--->
+> ▶️ If the player doesn't load inline, **[watch the demo](https://github.com/senthil2405/research-claw/raw/develop/docs/demo.webm)**.
 
-**What to show:** drag in a PDF → it renders instantly → select a sentence → a chat icon floats over the selection → ask *"explain this"* → a chat window opens anchored to the highlight and streams a Markdown + LaTeX answer.
+Drag in a PDF → it renders instantly → select a sentence → a chat icon floats over the selection → ask *"explain this"* → a chat window opens anchored to the highlight and streams a Markdown + LaTeX answer.
 
 ---
 
