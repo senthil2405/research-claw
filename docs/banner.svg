@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-label="Research Claw">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F7F5EF"/>
+      <stop offset="1" stop-color="#EFEBE0"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#E08B6B"/>
+      <stop offset="1" stop-color="#D97757"/>
+    </linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#2A2622" flood-opacity="0.10"/>
+    </filter>
+  </defs>
+
+  <rect width="1280" height="360" fill="url(#bg)"/>
+
+  <!-- subtle margin rule -->
+  <rect x="0" y="0" width="10" height="360" fill="url(#accent)" opacity="0.9"/>
+
+  <!-- document + highlight motif -->
+  <g transform="translate(96,74)" filter="url(#soft)">
+    <rect width="250" height="212" rx="14" fill="#FFFFFF" stroke="#E4DFD3"/>
+    <rect x="28" y="34" width="140" height="12" rx="6" fill="#CFC8BA"/>
+    <rect x="28" y="66" width="194" height="9" rx="4.5" fill="#E4DFD3"/>
+    <rect x="28" y="86" width="194" height="9" rx="4.5" fill="#E4DFD3"/>
+    <!-- highlighted line -->
+    <rect x="24" y="112" width="150" height="20" rx="6" fill="#D97757" opacity="0.20"/>
+    <rect x="28" y="116" width="142" height="9" rx="4.5" fill="#D97757"/>
+    <rect x="28" y="150" width="194" height="9" rx="4.5" fill="#E4DFD3"/>
+    <rect x="28" y="170" width="120" height="9" rx="4.5" fill="#E4DFD3"/>
+    <!-- chat bubble anchored to the highlight -->
+    <g transform="translate(150,104)">
+      <rect width="150" height="86" rx="14" fill="url(#accent)"/>
+      <rect x="18" y="22" width="96" height="8" rx="4" fill="#FFFFFF" opacity="0.95"/>
+      <rect x="18" y="40" width="114" height="8" rx="4" fill="#FFFFFF" opacity="0.80"/>
+      <rect x="18" y="58" width="70" height="8" rx="4" fill="#FFFFFF" opacity="0.65"/>
+      <path d="M18 86 L18 104 L40 86 Z" fill="url(#accent)"/>
+    </g>
+  </g>
+
+  <!-- wordmark -->
+  <g transform="translate(470,150)">
+    <text x="0" y="0" font-family="Georgia, 'Times New Roman', serif" font-size="72" font-weight="700" fill="#2A2622">Research
+      <tspan fill="#D97757"> Claw</tspan>
+    </text>
+    <text x="4" y="46" font-family="Georgia, 'Times New Roman', serif" font-size="25" font-style="italic" fill="#6B655C">Read papers. Ask anything. Right where you’re reading.</text>
+    <g font-family="-apple-system, Segoe UI, Roboto, sans-serif" font-size="15" fill="#8A8377">
+      <text x="4" y="92">PDF reader &#160;·&#160; highlight-anchored AI chat &#160;·&#160; LaTeX &#160;·&#160; Gemini</text>
+    </g>
+  </g>
+</svg>
